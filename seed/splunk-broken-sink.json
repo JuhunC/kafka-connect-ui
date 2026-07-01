@@ -1,0 +1,17 @@
+{
+  "connector.class": "com.splunk.kafka.connect.SplunkSinkConnector",
+  "tasks.max": "1",
+  "topics": "dbserver1.public.customers",
+  "splunk.hec.uri": "https://splunk-does-not-exist:8088",
+  "splunk.hec.token": "deadbeef-0000-0000-0000-badtokenbad0",
+  "splunk.hec.ssl.validate.certs": "false",
+  "splunk.hec.raw": "false",
+  "splunk.hec.ack.enabled": "false",
+  "splunk.hec.max.retries": "1",
+  "splunk.indexes": "main",
+  "splunk.sourcetypes": "connectlens:cdc",
+  "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+  "key.converter.schemas.enable": "false",
+  "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+  "value.converter.schemas.enable": "false"
+}

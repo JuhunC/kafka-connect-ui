@@ -1,0 +1,18 @@
+# Java / Maven
+backend/target/
+*.class
+
+# Node / Vite
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Env / secrets
+.env
+*.local
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/

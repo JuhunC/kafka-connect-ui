@@ -1,0 +1,317 @@
+# ConnectLens — full-stack demo deployment.
+#
+#   docker compose up --build
+#
+# Services (see docs/CONTRACT.md for the pinned source of truth):
+#   kafka      apache/kafka 3.9 KRaft combined, single node, RF=1 everywhere
+#   connect    custom cp-kafka-connect image with Debezium PG + Splunk sink baked in
+#   postgres   demo source (wal_level=logical, db "inventory")
+#   splunk     demo sink (HEC) — LARGE image, needs ~2GB RAM (see mem_limit note below)
+#   keycloak   OIDC IdP, realm "connectlens"
+#   backend    Spring Boot aggregator
+#   frontend   React SPA served by nginx, reverse-proxies /api -> backend
+#   seed       one-shot idempotent connector registration
+#   datagen    tiny loop that INSERT/UPDATEs Postgres so CDC keeps flowing
+#
+# Host entrypoints:
+#   http://localhost:8080  -> frontend (the app)
+#   http://localhost:8081  -> keycloak
+#   http://localhost:8000  -> splunk web (admin / Chang3d!)
+#   http://localhost:8090  -> backend API (proxied by the frontend in normal use)
+
+name: connectlens
+
+networks:
+  connectlens-net:
+    name: connectlens-net
+
+volumes:
+  kafka-data:
+  postgres-data:
+  splunk-var:
+  splunk-etc:
+
+services:
+  # ---------------------------------------------------------------------------
+  # Kafka — KRaft combined (broker + controller) single node.
+  # Two listeners: PLAINTEXT for in-network containers, EXTERNAL for the host.
+  # All replication factors pinned to 1 (single broker demo).
+  # ---------------------------------------------------------------------------
+  kafka:
+    image: apache/kafka:3.9.0
+    hostname: kafka
+    container_name: connectlens-kafka
+    networks: [connectlens-net]
+    ports:
+      - "9094:9094"
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      # internal PLAINTEXT for containers, EXTERNAL for the host on 9094
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      # single-node: everything replication factor 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_DEFAULT_REPLICATION_FACTOR: "1"
+      KAFKA_MIN_INSYNC_REPLICAS: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+      CLUSTER_ID: "connectlens-kraft-0001"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Postgres — demo source. Logical WAL so Debezium can do CDC.
+  # postgres/init/*.sql seeds the schema on first boot.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16
+    hostname: postgres
+    container_name: connectlens-postgres
+    networks: [connectlens-net]
+    command: ["postgres", "-c", "wal_level=logical"]
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: inventory
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d inventory"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # Splunk — demo sink over HEC.
+  # NOTE: this image is LARGE and hungry. Give Docker Desktop >= 4GB and expect
+  # this container alone to use ~2GB RAM. mem_limit is set to 3g so it does not
+  # get OOM-killed; drop or raise depending on your host. HEC token below is a
+  # well-known demo value, matched by the seed connectors.
+  # ---------------------------------------------------------------------------
+  splunk:
+    image: splunk/splunk:9.3
+    hostname: splunk
+    container_name: connectlens-splunk
+    networks: [connectlens-net]
+    mem_limit: 3g          # Splunk needs ~2GB; raise host memory if it OOMs
+    ports:
+      - "8000:8000"        # web UI (admin / Chang3d!)
+      - "8088:8088"        # HTTP Event Collector (HEC)
+    environment:
+      SPLUNK_START_ARGS: "--accept-license"
+      SPLUNK_PASSWORD: "Chang3d!"
+      SPLUNK_HEC_TOKEN: "00000000-0000-0000-0000-000000000000"
+      SPLUNK_HEC_SSL: "True"
+    volumes:
+      - splunk-var:/opt/splunk/var
+      - splunk-etc:/opt/splunk/etc
+    healthcheck:
+      # HEC health endpoint returns 200 once Splunk + HEC are up.
+      test: ["CMD-SHELL", "curl -k -sf https://localhost:8088/services/collector/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+      start_period: 90s
+
+  # ---------------------------------------------------------------------------
+  # Kafka Connect — custom image, plugins baked at build time.
+  # Distributed mode. JSON converters, schemas disabled. RF=1 on all 3 topics.
+  # ---------------------------------------------------------------------------
+  connect:
+    build:
+      context: ./connect
+      dockerfile: Dockerfile
+    image: connectlens/connect:local
+    hostname: connect
+    container_name: connectlens-connect
+    networks: [connectlens-net]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: "kafka:9092"
+      CONNECT_REST_PORT: "8083"
+      CONNECT_REST_ADVERTISED_HOST_NAME: "connect"
+      CONNECT_GROUP_ID: "connectlens-connect"
+      CONNECT_CONFIG_STORAGE_TOPIC: "connectlens-connect-configs"
+      CONNECT_OFFSET_STORAGE_TOPIC: "connectlens-connect-offsets"
+      CONNECT_STATUS_STORAGE_TOPIC: "connectlens-connect-status"
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_INTERNAL_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_INTERNAL_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components,/usr/share/connectlens-plugins"
+      CONNECT_LOG4J_ROOT_LOGLEVEL: "INFO"
+      CONNECT_LOG4J_LOGGERS: "org.reflections=ERROR"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/connectors || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # Keycloak — OIDC IdP. Imports the connectlens realm on start.
+  # KC_HOSTNAME set to the browser-facing URL so minted tokens carry issuer
+  # http://localhost:8081/realms/connectlens (see CONTRACT §1 issuer split).
+  # Host 8081 -> container 8080.
+  # ---------------------------------------------------------------------------
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    hostname: keycloak
+    container_name: connectlens-keycloak
+    networks: [connectlens-net]
+    command: ["start-dev", "--import-realm"]
+    ports:
+      - "8081:8080"
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: "admin"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "admin"
+      KC_HTTP_PORT: "8080"
+      # Browser-facing hostname; makes issuer = http://localhost:8081/realms/...
+      KC_HOSTNAME: "http://localhost:8081"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    healthcheck:
+      # Realm endpoint is reachable once the import completes and KC is serving.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /realms/connectlens HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | head -1 | grep -q '200'"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 40s
+
+  # ---------------------------------------------------------------------------
+  # Backend — Spring Boot aggregator. Built from backend/ (Maven multi-stage).
+  # Cluster registry + OIDC wiring via env (Spring relaxed binding).
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: connectlens/backend:local
+    hostname: backend
+    container_name: connectlens-backend
+    networks: [connectlens-net]
+    depends_on:
+      connect:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    ports:
+      - "8090:8090"
+    environment:
+      SERVER_PORT: "8090"
+      # Cluster registry (CONTRACT §2). Single-word config fields => unambiguous env binding.
+      CONNECTLENS_CLUSTERS_0_ID: "local"
+      CONNECTLENS_CLUSTERS_0_NAME: "Local Dev"
+      CONNECTLENS_CLUSTERS_0_BOOTSTRAP: "kafka:9092"
+      CONNECTLENS_CLUSTERS_0_CONNECT: "http://connect:8083"
+      # OIDC (CONTRACT §1 issuer split): tokens carry the localhost issuer,
+      # signatures are validated against the in-network JWKS.
+      CONNECTLENS_OIDC_ISSUER: "http://localhost:8081/realms/connectlens"
+      CONNECTLENS_OIDC_JWKS: "http://keycloak:8080/realms/connectlens/protocol/openid-connect/certs"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8090/api/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 45s
+
+  # ---------------------------------------------------------------------------
+  # Frontend — React SPA built with Vite, served by nginx.
+  # nginx reverse-proxies /api -> backend, with SSE-safe settings on events.
+  # Host 8080 -> container 80.
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: connectlens/frontend:local
+    hostname: frontend
+    container_name: connectlens-frontend
+    networks: [connectlens-net]
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "8080:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Seed — one-shot idempotent connector registration.
+  # Waits for connect (and the systems it targets), then PUTs each config.
+  # restart: "no" so it exits 0 and stays exited.
+  # ---------------------------------------------------------------------------
+  seed:
+    image: curlimages/curl:8.11.0
+    container_name: connectlens-seed
+    networks: [connectlens-net]
+    restart: "no"
+    depends_on:
+      connect:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      splunk:
+        condition: service_healthy
+    volumes:
+      - ./seed:/seed:ro
+    entrypoint: ["/bin/sh", "/seed/register.sh"]
+    environment:
+      CONNECT_URL: "http://connect:8083"
+
+  # ---------------------------------------------------------------------------
+  # Datagen — tiny loop that keeps mutating Postgres so CDC events keep flowing.
+  # Uses the postgres client image; script lives in datagen/.
+  # ---------------------------------------------------------------------------
+  datagen:
+    image: postgres:16
+    container_name: connectlens-datagen
+    networks: [connectlens-net]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./datagen:/datagen:ro
+    entrypoint: ["/bin/sh", "/datagen/generate.sh"]
+    environment:
+      PGHOST: "postgres"
+      PGPORT: "5432"
+      PGUSER: "postgres"
+      PGPASSWORD: "postgres"
+      PGDATABASE: "inventory"
+      INTERVAL_SECONDS: "5"
