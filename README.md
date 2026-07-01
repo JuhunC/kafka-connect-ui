@@ -82,7 +82,15 @@ docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull
 docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
 ```
 
-Pin a specific version by editing the tags in `docker-compose.ghcr.yml` (e.g. `:v0.1.0` instead of
+Or pull the images directly (the tag omits the leading `v` — `docker/metadata-action` strips it):
+
+```bash
+docker pull ghcr.io/juhunc/connectlens-backend:0.1.0
+docker pull ghcr.io/juhunc/connectlens-frontend:0.1.0
+docker pull ghcr.io/juhunc/connectlens-connect:0.1.0
+```
+
+Pin a specific version by editing the tags in `docker-compose.ghcr.yml` (e.g. `:0.1.0` instead of
 `:latest`). The images are public, so no `docker login` is required.
 
 ## CI/CD

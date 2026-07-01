@@ -83,6 +83,9 @@ jobs:
       - name: Lowercase owner
         id: owner
         run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - name: Version tag (strip leading v)
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
@@ -90,12 +93,12 @@ jobs:
           body: |
             ## ConnectLens ${{ github.ref_name }}
 
-            Prebuilt images published to GHCR:
+            Prebuilt images published to GHCR (image tag omits the leading `v`):
 
             ```bash
-            docker pull ghcr.io/${{ steps.owner.outputs.owner }}/connectlens-backend:${{ github.ref_name }}
-            docker pull ghcr.io/${{ steps.owner.outputs.owner }}/connectlens-frontend:${{ github.ref_name }}
-            docker pull ghcr.io/${{ steps.owner.outputs.owner }}/connectlens-connect:${{ github.ref_name }}
+            docker pull ghcr.io/${{ steps.owner.outputs.owner }}/connectlens-backend:${{ steps.ver.outputs.version }}
+            docker pull ghcr.io/${{ steps.owner.outputs.owner }}/connectlens-frontend:${{ steps.ver.outputs.version }}
+            docker pull ghcr.io/${{ steps.owner.outputs.owner }}/connectlens-connect:${{ steps.ver.outputs.version }}
             ```
 
             Or run the whole stack against these images:
