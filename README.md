@@ -93,6 +93,31 @@ docker pull ghcr.io/juhunc/connectlens-connect:0.1.0
 Pin a specific version by editing the tags in `docker-compose.ghcr.yml` (e.g. `:0.1.0` instead of
 `:latest`). The images are public, so no `docker login` is required.
 
+### Run against your own Kafka / Connect (app-only)
+
+To point ConnectLens at an **existing** Kafka + Kafka Connect instead of the bundled demo, use
+[`docker-compose.app.yml`](docker-compose.app.yml). It starts only the app (backend + frontend from
+GHCR) plus its bundled Keycloak — no Kafka, Connect, Postgres, or Splunk:
+
+```bash
+cp .env.app.example .env
+# edit .env: set KAFKA_BOOTSTRAP and CONNECT_URL to your endpoints
+docker compose -f docker-compose.app.yml up -d
+# open http://localhost:8080   (admin / admin)
+```
+
+ConnectLens does **not** connect to Splunk / Elasticsearch / S3 / databases directly — it discovers
+those sink/source systems through the Kafka Connect REST API and infers their health from connector
+state. So the only endpoints it needs are your **Kafka bootstrap** and **Connect REST URL**.
+
+- Endpoints must be reachable **from the backend container**: use `host.docker.internal:<port>` for
+  services on your machine, or a real host/IP for a remote cluster.
+- Your Kafka must advertise a listener the backend can resolve (not `localhost`).
+- Add more clusters with `CONNECTLENS_CLUSTERS_1_*` env vars in the backend service.
+- To use your own SSO instead of the bundled Keycloak, set `OIDC_ISSUER` / `OIDC_JWKS` **and** rebuild
+  the frontend image with `VITE_OIDC_AUTHORITY` / `VITE_OIDC_CLIENT_ID` — the SPA bakes OIDC config at
+  build time.
+
 ## CI/CD
 
 - **CI** (`.github/workflows/ci.yml`) runs on every push/PR to `main`: backend `mvn verify` (unit +

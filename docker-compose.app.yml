@@ -1,0 +1,113 @@
+# ConnectLens — application-only stack.
+#
+# Runs ONLY the app (backend + frontend, pulled from GHCR) plus its bundled
+# identity provider (Keycloak). It connects to your OWN, already-running Kafka
+# and Kafka Connect — nothing else is started here.
+#
+# It does NOT run Kafka, Kafka Connect, Postgres, Splunk, or any sink/source.
+# ConnectLens discovers those external systems (Splunk, Elasticsearch, S3, JDBC,
+# databases, ...) automatically through the Kafka Connect REST API and infers
+# their health from connector/task state — so the app only needs network access
+# to your Kafka bootstrap and your Connect REST endpoint.
+#
+#   1. cp .env.app.example .env
+#   2. edit .env  -> point KAFKA_BOOTSTRAP + CONNECT_URL at your cluster
+#   3. docker compose -f docker-compose.app.yml up -d
+#   4. open http://localhost:8080  (sign in: admin / admin)
+#
+# Needs the ./keycloak/realm-export.json from this repo (bundled auth realm).
+
+name: connectlens-app
+
+services:
+  # ---------------------------------------------------------------------------
+  # Keycloak — the app's identity provider (OIDC). Swap for your own SSO by
+  # pointing the backend OIDC_* env at it AND rebuilding the frontend image with
+  # VITE_OIDC_AUTHORITY / VITE_OIDC_CLIENT_ID (see README).
+  # ---------------------------------------------------------------------------
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    hostname: keycloak
+    networks: [connectlens-app-net]
+    command: ["start-dev", "--import-realm"]
+    ports:
+      - "8081:8080"
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: "${KEYCLOAK_ADMIN:-admin}"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD:-admin}"
+      KC_HTTP_PORT: "8080"
+      # Browser-facing hostname; makes issuer = http://localhost:8081/realms/connectlens
+      KC_HOSTNAME: "${KEYCLOAK_HOSTNAME:-http://localhost:8081}"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /realms/connectlens HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | head -1 | grep -q '200'"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 40s
+
+  # ---------------------------------------------------------------------------
+  # Backend — the aggregator. Points at your EXTERNAL Kafka + Connect via env.
+  # host.docker.internal resolves to the Docker host (services running on your
+  # machine); replace with a real hostname/IP for remote clusters.
+  # ---------------------------------------------------------------------------
+  backend:
+    image: ghcr.io/juhunc/connectlens-backend:${CONNECTLENS_TAG:-latest}
+    hostname: backend
+    pull_policy: always
+    networks: [connectlens-app-net]
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    extra_hosts:
+      # lets `host.docker.internal` work on Linux too (native on Docker Desktop)
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8090:8090"
+    environment:
+      SERVER_PORT: "8090"
+      # ---- Your cluster(s) — the app connects to these ----------------------
+      CONNECTLENS_CLUSTERS_0_ID: "${CLUSTER_ID:-prod}"
+      CONNECTLENS_CLUSTERS_0_NAME: "${CLUSTER_NAME:-Production}"
+      CONNECTLENS_CLUSTERS_0_BOOTSTRAP: "${KAFKA_BOOTSTRAP:-host.docker.internal:9092}"
+      CONNECTLENS_CLUSTERS_0_CONNECT: "${CONNECT_URL:-http://host.docker.internal:8083}"
+      # Add more clusters by setting CONNECTLENS_CLUSTERS_1_* here (see README).
+      # ---- OIDC (bundled Keycloak) ------------------------------------------
+      CONNECTLENS_OIDC_ISSUER: "${OIDC_ISSUER:-http://localhost:8081/realms/connectlens}"
+      CONNECTLENS_OIDC_JWKS: "${OIDC_JWKS:-http://keycloak:8080/realms/connectlens/protocol/openid-connect/certs}"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8090/api/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 45s
+
+  # ---------------------------------------------------------------------------
+  # Frontend — React SPA served by nginx (reverse-proxies /api -> backend:8090).
+  # Its OIDC config (localhost:8081 / connectlens-frontend) is baked at build;
+  # it works as-is with the bundled Keycloak above.
+  # ---------------------------------------------------------------------------
+  frontend:
+    image: ghcr.io/juhunc/connectlens-frontend:${CONNECTLENS_TAG:-latest}
+    hostname: frontend
+    pull_policy: always
+    networks: [connectlens-app-net]
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+networks:
+  connectlens-app-net:
+    driver: bridge
