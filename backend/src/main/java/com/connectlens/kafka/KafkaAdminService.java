@@ -5,6 +5,9 @@ import com.connectlens.model.LagPartitionDto;
 import jakarta.annotation.PreDestroy;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.admin.ConsumerGroupDescription;
+import org.apache.kafka.clients.admin.ConsumerGroupListing;
+import org.apache.kafka.clients.admin.ListConsumerGroupOffsetsSpec;
 import org.apache.kafka.clients.admin.ListOffsetsResult;
 import org.apache.kafka.clients.admin.OffsetSpec;
 import org.apache.kafka.clients.admin.TopicDescription;
@@ -24,7 +27,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 /**
  * One long-lived AdminClient per cluster. Provides cluster metadata (brokers, controller, URP,
@@ -118,6 +123,81 @@ public class KafkaAdminService {
         } catch (Exception e) {
             log.debug("Lag lookup failed for {} on {}: {}", connectorName, clusterId, e.toString());
             return null;
+        }
+    }
+
+    /**
+     * List real consumer groups (state, members, topics, total lag), EXCLUDING the given
+     * Connect-owned group ids (sink connectors' {@code connect-<name>} groups) so they are not
+     * double-counted — they are represented as connectors. Capped at {@code max} groups to bound
+     * broker load; committed offsets are fetched in one batched call (KIP-709). Never throws.
+     */
+    public List<ConsumerGroupInfo> listConsumerGroups(String clusterId, String bootstrap,
+                                                      Set<String> excludeGroupIds, int max) {
+        try {
+            Admin admin = adminFor(clusterId, bootstrap);
+            Collection<ConsumerGroupListing> listings = admin.listConsumerGroups().all()
+                    .get(API_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            List<String> ids = new ArrayList<>(listings.stream()
+                    .map(ConsumerGroupListing::groupId)
+                    .filter(id -> id != null && !excludeGroupIds.contains(id))
+                    .sorted()
+                    .toList());
+            if (ids.isEmpty()) {
+                return List.of();
+            }
+            if (ids.size() > max) {
+                log.info("Cluster {} has {} consumer groups; describing the first {} (connectlens.consumer-groups.max)",
+                        clusterId, ids.size(), max);
+                ids = ids.subList(0, max);
+            }
+
+            Map<String, ConsumerGroupDescription> descs = admin.describeConsumerGroups(ids).all()
+                    .get(API_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+
+            // One batched call for all groups' committed offsets, then one listOffsets for the union.
+            Map<String, ListConsumerGroupOffsetsSpec> spec = new HashMap<>();
+            for (String id : ids) {
+                spec.put(id, new ListConsumerGroupOffsetsSpec());
+            }
+            Map<String, Map<TopicPartition, OffsetAndMetadata>> committedByGroup =
+                    admin.listConsumerGroupOffsets(spec).all().get(API_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+
+            Map<TopicPartition, OffsetSpec> latestSpec = new HashMap<>();
+            for (Map<TopicPartition, OffsetAndMetadata> m : committedByGroup.values()) {
+                for (TopicPartition tp : m.keySet()) {
+                    latestSpec.put(tp, OffsetSpec.latest());
+                }
+            }
+            Map<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> ends = latestSpec.isEmpty()
+                    ? Map.of()
+                    : admin.listOffsets(latestSpec).all().get(API_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+
+            List<ConsumerGroupInfo> out = new ArrayList<>();
+            for (String id : ids) {
+                ConsumerGroupDescription d = descs.get(id);
+                String state = (d != null && d.state() != null) ? d.state().toString() : "Unknown";
+                int members = d != null ? d.members().size() : 0;
+                Integer coordinator = (d != null && d.coordinator() != null) ? d.coordinator().id() : null;
+
+                Map<TopicPartition, OffsetAndMetadata> committed = committedByGroup.getOrDefault(id, Map.of());
+                Set<String> topics = new TreeSet<>();
+                long lag = 0;
+                boolean hasLag = !committed.isEmpty();
+                for (Map.Entry<TopicPartition, OffsetAndMetadata> e : committed.entrySet()) {
+                    TopicPartition tp = e.getKey();
+                    topics.add(tp.topic());
+                    long c = e.getValue().offset();
+                    long end = ends.containsKey(tp) ? ends.get(tp).offset() : c;
+                    lag += Math.max(0, end - c);
+                }
+                out.add(new ConsumerGroupInfo(id, state, members, coordinator,
+                        new ArrayList<>(topics), hasLag ? lag : null));
+            }
+            return out;
+        } catch (Exception e) {
+            log.warn("Consumer group listing failed for cluster {} ({}): {}", clusterId, bootstrap, e.toString());
+            return List.of();
         }
     }
 

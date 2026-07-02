@@ -51,6 +51,17 @@ class NormalizerLogicTest {
     }
 
     @Test
+    void consumerGroupStateMapsToHealth() {
+        assertThat(Normalizer.consumerGroupHealth("Stable")).isEqualTo(Health.RUNNING);
+        assertThat(Normalizer.consumerGroupHealth("Empty")).isEqualTo(Health.PAUSED);
+        assertThat(Normalizer.consumerGroupHealth("Dead")).isEqualTo(Health.FAILED);
+        assertThat(Normalizer.consumerGroupHealth("PreparingRebalance")).isEqualTo(Health.RESTARTING);
+        assertThat(Normalizer.consumerGroupHealth("CompletingRebalance")).isEqualTo(Health.RESTARTING);
+        assertThat(Normalizer.consumerGroupHealth("Unknown")).isEqualTo(Health.UNKNOWN);
+        assertThat(Normalizer.consumerGroupHealth(null)).isEqualTo(Health.UNKNOWN);
+    }
+
+    @Test
     void parseHealthDefaultsToUnknown() {
         assertThat(Normalizer.parseHealth("weird")).isEqualTo(Health.UNKNOWN);
         assertThat(Normalizer.parseHealth(null)).isEqualTo(Health.UNKNOWN);

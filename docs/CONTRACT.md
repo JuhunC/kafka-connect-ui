@@ -162,6 +162,49 @@ node id = its `ExternalSystemDto.id`. Each connector → one edge between the hu
 inferable external system still appear in the connectors list but may be omitted from topology (or attach
 to a `generic` node).
 
+### Consumer groups (added v0.2.0)
+
+Kafka consumer groups appear as their own topology node kind, **distinct from connectors**. Because a
+Kafka Connect SINK connector internally uses a consumer group named `connect-<connector>`, those
+Connect-owned groups are **excluded** from the consumer-group set (they are already represented as
+connectors) — this is the connectors-vs-consumer-groups differentiation.
+
+```ts
+interface ConsumerGroupDto {
+  groupId: string;
+  state: string;              // raw Kafka state: "Stable" | "Empty" | "Dead" | "PreparingRebalance" | ...
+  health: Health;            // derived: Stable→RUNNING, Empty→PAUSED, Dead→FAILED, *Rebalance/Assigning/Reconciling→RESTARTING
+  memberCount: number;
+  coordinatorId: number | null;
+  topics: string[];           // distinct topics the group has committed offsets on
+  totalLag: number | null;    // sum of (logEndOffset − committedOffset) across the group; null if unknown
+}
+```
+
+`ClusterSnapshotDto` gains `consumerGroups: ConsumerGroupDto[]`.
+
+Topology node kind is now `"kafka" | "external" | "consumer"`. Consumer-group node: `id = "cg:"+groupId`,
+`kind:"consumer"`, `label:groupId`, `role:"consumer"`, `systemKind:"consumer-group"`, `health` = group health.
+
+`TopologyEdgeDto` is extended (connector edges unchanged in meaning, new fields added):
+```ts
+interface TopologyEdgeDto {
+  id: string; source: string; target: string;
+  kind: "connector" | "consumer";     // NEW — differentiates the two
+  connectorName: string | null;       // set when kind="connector"
+  groupId: string | null;             // NEW — set when kind="consumer"
+  label: string;                      // NEW — connector name or group id (display)
+  health: Health;
+  direction: "in" | "out";            // consumer edges are Kafka→group, i.e. "out"
+}
+```
+Consumer edge: `id="cgedge:"+groupId`, `kind:"consumer"`, `source=hubId`, `target="cg:"+groupId`,
+`connectorName:null`, `groupId`, `label:groupId`, `direction:"out"`.
+
+REST: `GET /api/clusters/{id}/consumer-groups` → `ConsumerGroupDto[]` (also embedded in the snapshot).
+Backend config: `connectlens.consumer-groups.enabled` (default true), `connectlens.consumer-groups.max`
+(default 200 — cap on groups described/lag-computed per slow poll, to bound broker load).
+
 ## 6. External-system inference (backend)
 
 Given a connector's `connector.class` + config map, produce an `ExternalSystemDto`:

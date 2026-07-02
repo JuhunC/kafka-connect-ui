@@ -4,6 +4,7 @@ import com.connectlens.connect.RawConnector;
 import com.connectlens.connect.RawTask;
 import com.connectlens.inference.EndpointInferrer;
 import com.connectlens.inference.InferredSystem;
+import com.connectlens.kafka.ConsumerGroupInfo;
 import com.connectlens.model.*;
 import org.springframework.stereotype.Component;
 
@@ -14,8 +15,9 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * Turns raw Connect data into the wire model: connectors, per-connector detail, external systems,
- * and topology. Health always derives from REST /status (never from a missing metric — KAFKA-9066).
+ * Turns raw Connect + Kafka data into the wire model: connectors, per-connector detail, external
+ * systems, consumer groups, and topology. Health always derives from REST /status or the group's
+ * reported state (never from a missing metric — KAFKA-9066).
  */
 @Component
 public class Normalizer {
@@ -33,6 +35,7 @@ public class Normalizer {
     public NormalizedResult normalize(String clusterId,
                                       Map<String, RawConnector> raw,
                                       Map<String, LagDto> lagByConnector,
+                                      List<ConsumerGroupInfo> consumerGroupInfos,
                                       boolean kafkaReachable,
                                       long nowTs) {
         List<ConnectorDto> connectors = new ArrayList<>();
@@ -75,12 +78,22 @@ public class Normalizer {
                     reach, lastSuccess, List.copyOf(agg.connectors), agg.health));
         }
 
-        TopologyDto topology = buildTopology(clusterId, connectors, systemsById, kafkaReachable);
-        return new NormalizedResult(connectors, details, systems, topology);
+        List<ConsumerGroupDto> consumerGroups = new ArrayList<>();
+        if (consumerGroupInfos != null) {
+            for (ConsumerGroupInfo cg : consumerGroupInfos) {
+                consumerGroups.add(new ConsumerGroupDto(
+                        cg.groupId(), cg.state(), consumerGroupHealth(cg.state()),
+                        cg.memberCount(), cg.coordinatorId(), cg.topics(), cg.totalLag()));
+            }
+        }
+
+        TopologyDto topology = buildTopology(clusterId, connectors, systemsById, consumerGroups, kafkaReachable);
+        return new NormalizedResult(connectors, details, systems, consumerGroups, topology);
     }
 
     private TopologyDto buildTopology(String clusterId, List<ConnectorDto> connectors,
-                                      Map<String, SysAgg> systemsById, boolean kafkaReachable) {
+                                      Map<String, SysAgg> systemsById, List<ConsumerGroupDto> consumerGroups,
+                                      boolean kafkaReachable) {
         List<TopologyNodeDto> nodes = new ArrayList<>();
         List<TopologyEdgeDto> edges = new ArrayList<>();
 
@@ -99,9 +112,20 @@ public class Normalizer {
             boolean sink = "sink".equals(c.type());
             String source = sink ? hubId : c.externalSystemId();
             String target = sink ? c.externalSystemId() : hubId;
-            edges.add(new TopologyEdgeDto("edge:" + c.name(), source, target, c.name(), c.health(),
-                    sink ? "out" : "in"));
+            edges.add(new TopologyEdgeDto("edge:" + c.name(), source, target, "connector",
+                    c.name(), null, c.name(), c.health(), sink ? "out" : "in"));
         }
+
+        // Consumer groups: distinct node kind, edge Kafka -> group (data flows out of Kafka).
+        for (ConsumerGroupDto g : consumerGroups) {
+            String nodeId = "cg:" + g.groupId();
+            nodes.add(new TopologyNodeDto(nodeId, "consumer", g.groupId(),
+                    g.memberCount() + " member" + (g.memberCount() == 1 ? "" : "s"),
+                    "consumer", g.health(), "consumer-group"));
+            edges.add(new TopologyEdgeDto("cgedge:" + g.groupId(), hubId, nodeId, "consumer",
+                    null, g.groupId(), g.groupId(), g.health(), "out"));
+        }
+
         return new TopologyDto(nodes, edges);
     }
 
@@ -114,6 +138,18 @@ public class Normalizer {
         } catch (IllegalArgumentException e) {
             return Health.UNKNOWN;
         }
+    }
+
+    /** Map a Kafka consumer-group state string to our Health scale for the UI pill. */
+    static Health consumerGroupHealth(String state) {
+        if (state == null) return Health.UNKNOWN;
+        return switch (state) {
+            case "Stable" -> Health.RUNNING;
+            case "Empty" -> Health.PAUSED;   // group exists but has no active members (idle)
+            case "Dead" -> Health.FAILED;
+            case "PreparingRebalance", "CompletingRebalance", "Assigning", "Reconciling" -> Health.RESTARTING;
+            default -> Health.UNKNOWN;
+        };
     }
 
     /** Connector health = worst task state, honoring connector-level PAUSED/STOPPED. */

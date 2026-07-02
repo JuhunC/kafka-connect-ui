@@ -9,6 +9,7 @@ import type {
   ClusterSnapshotDto,
   ClusterSummaryDto,
   ConnectorDetailDto,
+  ConsumerGroupDto,
   MeDto,
 } from "./types";
 
@@ -136,6 +137,12 @@ export class ApiClient {
   getConnectorDetail(clusterId: string, name: string): Promise<ConnectorDetailDto> {
     return this.request<ConnectorDetailDto>(
       `/api/clusters/${encodeURIComponent(clusterId)}/connectors/${encodeURIComponent(name)}`,
+    );
+  }
+
+  getConsumerGroups(clusterId: string): Promise<ConsumerGroupDto[]> {
+    return this.request<ConsumerGroupDto[]>(
+      `/api/clusters/${encodeURIComponent(clusterId)}/consumer-groups`,
     );
   }
 

@@ -11,10 +11,12 @@ public record ClusterSnapshotDto(
         ClusterHealthDto cluster,
         List<ConnectorDto> connectors,
         List<ExternalSystemDto> externalSystems,
+        List<ConsumerGroupDto> consumerGroups,
         TopologyDto topology
 ) {
     /** A copy of this snapshot flagged stale (used when a poll fails and we serve last-good state). */
     public ClusterSnapshotDto asStale() {
-        return new ClusterSnapshotDto(clusterId, name, lastPollTs, true, cluster, connectors, externalSystems, topology);
+        return new ClusterSnapshotDto(clusterId, name, lastPollTs, true, cluster,
+                connectors, externalSystems, consumerGroups, topology);
     }
 }

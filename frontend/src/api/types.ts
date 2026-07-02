@@ -101,12 +101,22 @@ export interface ExternalSystemDto {
   health: Health; // rollup across contributing connectors
 }
 
+export interface ConsumerGroupDto {
+  groupId: string;
+  state: string; // raw Kafka state e.g. "Stable" | "Empty" | "Dead" | "PreparingRebalance"
+  health: Health; // derived group health (Stable→RUNNING, Empty→PAUSED, Dead→FAILED, *Rebalance→RESTARTING)
+  memberCount: number;
+  coordinatorId: number | null;
+  topics: string[];
+  totalLag: number | null;
+}
+
 export interface TopologyNodeDto {
   id: string;
-  kind: "kafka" | "external";
+  kind: "kafka" | "external" | "consumer";
   label: string;
   sublabel: string | null;
-  role: "source" | "sink" | "hub";
+  role: "source" | "sink" | "hub" | "consumer";
   health: Health;
   systemKind: string | null;
 }
@@ -115,9 +125,12 @@ export interface TopologyEdgeDto {
   id: string;
   source: string; // node id
   target: string; // node id
-  connectorName: string;
+  kind: "connector" | "consumer"; // differentiates connector vs consumer-group edges
+  connectorName: string | null; // set when kind="connector"
+  groupId: string | null; // set when kind="consumer"
+  label: string; // connector name or group id (for display)
   health: Health;
-  direction: "in" | "out"; // in = source→kafka, out = kafka→sink
+  direction: "in" | "out"; // in = source→kafka, out = kafka→sink; consumer edges are "out"
 }
 
 export interface TopologyDto {
@@ -133,5 +146,6 @@ export interface ClusterSnapshotDto {
   cluster: ClusterHealthDto;
   connectors: ConnectorDto[];
   externalSystems: ExternalSystemDto[];
+  consumerGroups: ConsumerGroupDto[];
   topology: TopologyDto;
 }

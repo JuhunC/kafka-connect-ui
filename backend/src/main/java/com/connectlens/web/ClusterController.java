@@ -64,6 +64,12 @@ public class ClusterController {
                 .orElseThrow(() -> new NotFoundException("Connector not found: " + name));
     }
 
+    @GetMapping("/{clusterId}/consumer-groups")
+    public List<ConsumerGroupDto> consumerGroups(@PathVariable String clusterId) {
+        requireCluster(clusterId);
+        return store.getSnapshot(clusterId).map(ClusterSnapshotDto::consumerGroups).orElseGet(List::of);
+    }
+
     @PostMapping("/{clusterId}/connectors/{name}/pause")
     @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
     public ResponseEntity<Void> pause(@PathVariable String clusterId, @PathVariable String name) {
@@ -111,6 +117,6 @@ public class ClusterController {
                         c.getId(), "hub", Health.UNKNOWN, null)),
                 List.of());
         return new ClusterSnapshotDto(c.getId(), c.getName(), null, true,
-                ClusterHealthDto.unknown(c.getId()), List.of(), List.of(), topo);
+                ClusterHealthDto.unknown(c.getId()), List.of(), List.of(), List.of(), topo);
     }
 }

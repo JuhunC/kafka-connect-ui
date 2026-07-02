@@ -6,16 +6,25 @@ import { Alert, Container } from "@mui/material";
 import { AppLayout, type AppTab } from "../components/AppLayout";
 import { TopologyPage } from "./TopologyPage";
 import { ConnectorsPage } from "./ConnectorsPage";
+import { ConsumerGroupsPage } from "./ConsumerGroupsPage";
 import { ConnectorDetailDrawer } from "../components/ConnectorDetailDrawer";
 import { useClusterContext } from "./ClusterContext";
 
 export function Dashboard(): ReactElement {
   const [tab, setTab] = useState<AppTab>("topology");
   const [selectedConnector, setSelectedConnector] = useState<string | null>(null);
+  const [focusedGroup, setFocusedGroup] = useState<string | null>(null);
   const { selectedClusterId, clusters, clustersLoading, clustersError } = useClusterContext();
 
   const openConnector = (name: string) => setSelectedConnector(name);
   const closeConnector = () => setSelectedConnector(null);
+
+  // Clicking a consumer group in the topology jumps to the Consumer Groups tab
+  // and focuses that group's detail drawer.
+  const openConsumerGroup = (groupId: string) => {
+    setFocusedGroup(groupId);
+    setTab("consumer-groups");
+  };
 
   return (
     <AppLayout tab={tab} onTabChange={setTab}>
@@ -34,8 +43,19 @@ export function Dashboard(): ReactElement {
         </Container>
       )}
 
-      {tab === "topology" && <TopologyPage onConnectorSelect={openConnector} />}
+      {tab === "topology" && (
+        <TopologyPage
+          onConnectorSelect={openConnector}
+          onConsumerSelect={openConsumerGroup}
+        />
+      )}
       {tab === "connectors" && <ConnectorsPage onConnectorSelect={openConnector} />}
+      {tab === "consumer-groups" && (
+        <ConsumerGroupsPage
+          focusedGroupId={focusedGroup}
+          onClearFocus={() => setFocusedGroup(null)}
+        />
+      )}
 
       {selectedClusterId && (
         <ConnectorDetailDrawer

@@ -16,6 +16,7 @@ public class ConnectLensProperties {
     private List<ClusterDef> clusters = new ArrayList<>();
     private Auth auth = new Auth();
     private Poll poll = new Poll();
+    private ConsumerGroups consumerGroups = new ConsumerGroups();
     private Oidc oidc = new Oidc();
     private Cors cors = new Cors();
 
@@ -27,6 +28,9 @@ public class ConnectLensProperties {
 
     public Poll getPoll() { return poll; }
     public void setPoll(Poll poll) { this.poll = poll; }
+
+    public ConsumerGroups getConsumerGroups() { return consumerGroups; }
+    public void setConsumerGroups(ConsumerGroups consumerGroups) { this.consumerGroups = consumerGroups; }
 
     public Oidc getOidc() { return oidc; }
     public void setOidc(Oidc oidc) { this.oidc = oidc; }
@@ -57,6 +61,16 @@ public class ConnectLensProperties {
         private boolean enabled = true;
         public boolean isEnabled() { return enabled; }
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
+    }
+
+    /** Consumer-group discovery (shown in the topology + Consumer Groups tab). */
+    public static class ConsumerGroups {
+        private boolean enabled = true;
+        private int max = 200;   // cap on groups described/lag-computed per slow poll (bounds broker load)
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public int getMax() { return max; }
+        public void setMax(int max) { this.max = max; }
     }
 
     public static class Poll {

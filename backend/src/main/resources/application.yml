@@ -32,6 +32,9 @@ connectlens:
   poll:
     fast-ms: 4000     # connector/task status cadence
     slow-ms: 30000    # cluster metadata + consumer-group lag cadence
+  consumer-groups:
+    enabled: true     # discover Kafka consumer groups (topology + Consumer Groups tab)
+    max: 200          # cap on groups described/lag-computed per slow poll (bounds broker load)
   oidc:
     # issuer = what the browser-minted token carries (Keycloak KC_HOSTNAME)
     issuer: http://localhost:8081/realms/connectlens

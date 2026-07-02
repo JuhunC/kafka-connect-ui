@@ -12,9 +12,13 @@ import { ExternalSystemCard } from "../components/ExternalSystemCard";
 
 export interface TopologyPageProps {
   onConnectorSelect: (connectorName: string) => void;
+  onConsumerSelect?: (groupId: string) => void;
 }
 
-export function TopologyPage({ onConnectorSelect }: TopologyPageProps): ReactElement {
+export function TopologyPage({
+  onConnectorSelect,
+  onConsumerSelect,
+}: TopologyPageProps): ReactElement {
   const { snapshot, streamError } = useClusterContext();
 
   if (!snapshot) {
@@ -46,6 +50,7 @@ export function TopologyPage({ onConnectorSelect }: TopologyPageProps): ReactEle
             <TopologyView
               topology={snapshot.topology}
               onConnectorSelect={onConnectorSelect}
+              onConsumerSelect={onConsumerSelect}
             />
           </Paper>
         </Grid>

@@ -51,8 +51,11 @@ public class PollerManager {
         }
         long fast = props.getPoll().getFastMs();
         long slow = props.getPoll().getSlowMs();
+        boolean cgEnabled = props.getConsumerGroups().isEnabled();
+        int cgMax = props.getConsumerGroups().getMax();
         for (ConnectLensProperties.ClusterDef c : registry.all()) {
-            ClusterPoller poller = new ClusterPoller(c, connect, admin, normalizer, store, broadcaster, fast, slow);
+            ClusterPoller poller = new ClusterPoller(c, connect, admin, normalizer, store, broadcaster,
+                    fast, slow, cgEnabled, cgMax);
             poller.start();
             pollers.add(poller);
             log.info("Started poller for cluster '{}' (connect={}, bootstrap={})",
