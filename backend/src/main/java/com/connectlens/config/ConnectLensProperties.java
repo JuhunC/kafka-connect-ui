@@ -14,12 +14,16 @@ import java.util.List;
 public class ConnectLensProperties {
 
     private List<ClusterDef> clusters = new ArrayList<>();
+    private Auth auth = new Auth();
     private Poll poll = new Poll();
     private Oidc oidc = new Oidc();
     private Cors cors = new Cors();
 
     public List<ClusterDef> getClusters() { return clusters; }
     public void setClusters(List<ClusterDef> clusters) { this.clusters = clusters; }
+
+    public Auth getAuth() { return auth; }
+    public void setAuth(Auth auth) { this.auth = auth; }
 
     public Poll getPoll() { return poll; }
     public void setPoll(Poll poll) { this.poll = poll; }
@@ -45,6 +49,14 @@ public class ConnectLensProperties {
         public void setBootstrap(String bootstrap) { this.bootstrap = bootstrap; }
         public String getConnect() { return connect; }
         public void setConnect(String connect) { this.connect = connect; }
+    }
+
+    /** Authentication toggle. When disabled, the API is open and every request is treated
+     *  as an ADMIN principal (intended for trusted/air-gapped internal networks). */
+    public static class Auth {
+        private boolean enabled = true;
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
     }
 
     public static class Poll {

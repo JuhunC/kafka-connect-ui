@@ -41,10 +41,15 @@ export function snapshotQueryKey(clusterId: string): [string, string] {
 class FatalStreamError extends Error {}
 
 export function useClusterStream(clusterId: string | null): ClusterStreamState {
-  const auth = useAuth();
+  // When auth is disabled there is no AuthProvider, so useAuth() must not be
+  // consulted for a token. config.authEnabled is a module constant, so this
+  // conditional hook call is stable for the app's lifetime.
+  const accessToken = config.authEnabled
+    ? // eslint-disable-next-line react-hooks/rules-of-hooks
+      useAuth().user?.access_token
+    : undefined;
   const api = useApi();
   const queryClient = useQueryClient();
-  const accessToken = auth.user?.access_token;
 
   const [snapshot, setSnapshot] = useState<ClusterSnapshotDto | null>(null);
   const [status, setStatus] = useState<StreamStatus>("connecting");
@@ -55,7 +60,10 @@ export function useClusterStream(clusterId: string | null): ClusterStreamState {
   activeClusterRef.current = clusterId;
 
   useEffect(() => {
-    if (!clusterId || !accessToken) return;
+    // With auth on we require a token before connecting; with auth off we
+    // connect as soon as we have a cluster.
+    if (!clusterId) return;
+    if (config.authEnabled && !accessToken) return;
 
     // Reset when the target cluster changes.
     setSnapshot(null);
@@ -101,7 +109,8 @@ export function useClusterStream(clusterId: string | null): ClusterStreamState {
       try {
         await fetchEventSource(`${config.apiBase}/api/clusters/${encodeURIComponent(clusterId)}/events`, {
           signal: abort.signal,
-          headers: { Authorization: `Bearer ${accessToken}` },
+          // No Authorization header when auth is disabled (there is no token).
+          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
           openWhenHidden: true,
           async onopen(response) {
             const ct = response.headers.get("content-type") ?? "";

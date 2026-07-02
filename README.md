@@ -114,9 +114,25 @@ state. So the only endpoints it needs are your **Kafka bootstrap** and **Connect
   services on your machine, or a real host/IP for a remote cluster.
 - Your Kafka must advertise a listener the backend can resolve (not `localhost`).
 - Add more clusters with `CONNECTLENS_CLUSTERS_1_*` env vars in the backend service.
-- To use your own SSO instead of the bundled Keycloak, set `OIDC_ISSUER` / `OIDC_JWKS` **and** rebuild
-  the frontend image with `VITE_OIDC_AUTHORITY` / `VITE_OIDC_CLIENT_ID` — the SPA bakes OIDC config at
-  build time.
+- To use your own SSO instead of the bundled Keycloak, point the **backend** at it with `OIDC_ISSUER` /
+  `OIDC_JWKS`, and point the **frontend** at it with `CONNECTLENS_OIDC_AUTHORITY` /
+  `CONNECTLENS_OIDC_CLIENT_ID` — these are injected into the SPA at container start via a generated
+  `/config.js`, so **no rebuild is needed** (image tag ≥ `0.1.1`).
+
+### Run with authentication disabled (air-gapped / trusted network)
+
+On a trusted internal network you can turn auth off entirely — **no Keycloak, no login**. Use
+[`docker-compose.noauth.yml`](docker-compose.noauth.yml):
+
+```bash
+cp .env.app.example .env       # set KAFKA_BOOTSTRAP + CONNECT_URL
+docker compose -f docker-compose.noauth.yml up -d
+# open http://localhost:8080   (no login; everyone is admin)
+```
+
+It sets `CONNECTLENS_AUTH_ENABLED=false` on both the backend (the API is open and every request runs as
+`ADMIN`) and the frontend (the SPA skips OIDC). Requires image tag ≥ `0.1.1`. Flip it back on by using
+`docker-compose.app.yml` (bundled Keycloak) or pointing at your own OIDC as above.
 
 ## CI/CD
 

@@ -1,0 +1,68 @@
+# ConnectLens — no-auth, application-only stack.
+#
+# Runs ONLY the app (backend + frontend from GHCR) with authentication DISABLED —
+# no Keycloak, no login. The API is open and everyone is effectively admin.
+# Intended for a trusted / air-gapped internal network.
+#
+# It connects to your OWN Kafka + Kafka Connect (external systems like Splunk are
+# discovered through the Connect REST API — nothing else runs here).
+#
+#   1. cp .env.app.example .env
+#   2. edit .env  -> set KAFKA_BOOTSTRAP + CONNECT_URL
+#   3. docker compose -f docker-compose.noauth.yml up -d
+#   4. open http://localhost:8080   (no login)
+#
+# Requires image tag >= 0.1.1 (the auth toggle). Pin CONNECTLENS_TAG=0.1.1 for reproducibility.
+
+name: connectlens-noauth
+
+services:
+  backend:
+    image: ghcr.io/juhunc/connectlens-backend:${CONNECTLENS_TAG:-latest}
+    hostname: backend
+    pull_policy: always
+    networks: [connectlens-net]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8090:8090"
+    environment:
+      SERVER_PORT: "8090"
+      # ---- Authentication OFF ----------------------------------------------
+      CONNECTLENS_AUTH_ENABLED: "false"
+      # ---- Your cluster(s) — the app connects to these ---------------------
+      CONNECTLENS_CLUSTERS_0_ID: "${CLUSTER_ID:-prod}"
+      CONNECTLENS_CLUSTERS_0_NAME: "${CLUSTER_NAME:-Production}"
+      CONNECTLENS_CLUSTERS_0_BOOTSTRAP: "${KAFKA_BOOTSTRAP:-host.docker.internal:9092}"
+      CONNECTLENS_CLUSTERS_0_CONNECT: "${CONNECT_URL:-http://host.docker.internal:8083}"
+      # Add more clusters with CONNECTLENS_CLUSTERS_1_* etc.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8090/api/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  frontend:
+    image: ghcr.io/juhunc/connectlens-frontend:${CONNECTLENS_TAG:-latest}
+    hostname: frontend
+    pull_policy: always
+    networks: [connectlens-net]
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      # Tells the SPA (via the generated /config.js) to skip OIDC login entirely.
+      CONNECTLENS_AUTH_ENABLED: "false"
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+networks:
+  connectlens-net:
+    driver: bridge

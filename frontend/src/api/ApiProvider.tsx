@@ -1,13 +1,18 @@
 // Provides a single ApiClient instance wired to the current OIDC access token.
 // Kept separate from the auth module so components import the client via a hook.
+//
+// When auth is disabled (config.authEnabled === false) there is no token, so
+// the provider supplies a null token provider and never touches react-oidc.
 
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { useAuth } from "react-oidc-context";
+import { config } from "../config";
 import { ApiClient } from "./client";
 
 const ApiContext = createContext<ApiClient | null>(null);
 
-export function ApiProvider({ children }: { children: ReactNode }): ReactNode {
+// Auth-enabled provider: reads the token lazily from the OIDC user.
+function AuthedApiProvider({ children }: { children: ReactNode }): ReactNode {
   const auth = useAuth();
 
   const client = useMemo(
@@ -20,6 +25,22 @@ export function ApiProvider({ children }: { children: ReactNode }): ReactNode {
   );
 
   return <ApiContext.Provider value={client}>{children}</ApiContext.Provider>;
+}
+
+// Auth-disabled provider: no token, no react-oidc dependency.
+function AnonymousApiProvider({ children }: { children: ReactNode }): ReactNode {
+  const client = useMemo(() => new ApiClient({ getToken: () => null }), []);
+  return <ApiContext.Provider value={client}>{children}</ApiContext.Provider>;
+}
+
+export function ApiProvider({ children }: { children: ReactNode }): ReactNode {
+  // config.authEnabled is a module constant, so the branch is stable for the
+  // app's lifetime and never changes hook order.
+  return config.authEnabled ? (
+    <AuthedApiProvider>{children}</AuthedApiProvider>
+  ) : (
+    <AnonymousApiProvider>{children}</AnonymousApiProvider>
+  );
 }
 
 export function useApi(): ApiClient {

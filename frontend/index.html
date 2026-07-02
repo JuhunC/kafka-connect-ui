@@ -4,6 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ConnectLens</title>
+    <!-- Runtime configuration injected at container start (see
+         docker-entrypoint.d/40-connectlens-config.sh). Must run before the app
+         module below so window.__CONNECTLENS_CONFIG__ is set first. In dev this
+         is served from public/config.js as a safe empty default. -->
+    <script src="/config.js"></script>
   </head>
   <body>
     <div id="root"></div>

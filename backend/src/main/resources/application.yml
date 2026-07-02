@@ -25,6 +25,10 @@ connectlens:
       name: Local Dev
       bootstrap: kafka:9092
       connect: http://connect:8083
+  auth:
+    # false (or CONNECTLENS_AUTH_ENABLED=false) disables login + RBAC entirely — the API is open
+    # and every request is treated as ADMIN. For trusted / air-gapped internal networks only.
+    enabled: true
   poll:
     fast-ms: 4000     # connector/task status cadence
     slow-ms: 30000    # cluster metadata + consumer-group lag cadence
