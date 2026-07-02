@@ -43,7 +43,7 @@ public class ClusterPoller {
     private final StateStore store;
     private final SseBroadcaster broadcaster;
     private final long fastMs;
-    private final int slowEvery;
+    private final long slowMs;
     private final boolean consumerGroupsEnabled;
     private final int consumerGroupsMax;
     private final boolean topicsEnabled;
@@ -53,6 +53,7 @@ public class ClusterPoller {
     private final ScheduledExecutorService exec;
     private volatile boolean running = false;
     private long cycle = 0;
+    private long lastSlowTs = 0L;
 
     // slow-tier caches, reused on fast cycles
     private KafkaClusterInfo kafkaInfo = KafkaClusterInfo.unreachable();
@@ -72,7 +73,7 @@ public class ClusterPoller {
         this.store = store;
         this.broadcaster = broadcaster;
         this.fastMs = fastMs;
-        this.slowEvery = (int) Math.max(1, Math.round((double) slowMs / Math.max(1, fastMs)));
+        this.slowMs = Math.max(0, slowMs);
         this.consumerGroupsEnabled = consumerGroupsEnabled;
         this.consumerGroupsMax = consumerGroupsMax;
         this.topicsEnabled = topicsEnabled;
@@ -120,8 +121,12 @@ public class ClusterPoller {
             return;
         }
 
-        boolean slow = (cycle % slowEvery == 0);
+        long now = System.currentTimeMillis();
+        // Time-based slow tier: run when at least slowMs has elapsed since the last slow run,
+        // so the configured interval is honored regardless of the fast cadence.
+        boolean slow = (lastSlowTs == 0L) || (now - lastSlowTs >= slowMs);
         if (slow) {
+            lastSlowTs = now;
             kafkaInfo = admin.describe(cluster.getId(), cluster.getBootstrap());
             try {
                 rootInfo = connect.getRoot(cluster.getConnect());
@@ -149,7 +154,6 @@ public class ClusterPoller {
                     : List.of();
         }
 
-        long now = System.currentTimeMillis();
         NormalizedResult nr = normalizer.normalize(cluster.getId(), raw, lagCache, consumerGroupCache,
                 topicCache, kafkaInfo.reachable(), now, topicsWindow);
         ClusterHealthDto health = new ClusterHealthDto(

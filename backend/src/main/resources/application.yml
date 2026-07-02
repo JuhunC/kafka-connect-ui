@@ -31,7 +31,7 @@ connectlens:
     enabled: true
   poll:
     fast-ms: 4000     # connector/task status cadence
-    slow-ms: 30000    # cluster metadata + consumer-group lag cadence
+    slow-ms: 10000    # kafka cluster status + consumer groups + topics + lag cadence
   consumer-groups:
     enabled: true     # discover Kafka consumer groups (topology + Consumer Groups tab)
     max: 200          # cap on groups described/lag-computed per slow poll (bounds broker load)

@@ -3,7 +3,7 @@
 // colored by health and animated for running edges (unless reduced-motion).
 // Clicking an external node or an edge opens the connector detail drawer.
 
-import { useCallback, useEffect, useMemo, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, type ReactElement } from "react";
 import {
   Background,
   Controls,
@@ -13,6 +13,7 @@ import {
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
+  useReactFlow,
   type Edge,
   type EdgeMouseHandler,
   type NodeMouseHandler,
@@ -201,9 +202,38 @@ function TopologyInner({
 
   const [nodes, setNodes, onNodesChange] = useNodesState<TopologyFlowNode>(built.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(flowEdges);
+  const { fitView } = useReactFlow();
 
-  // Keep the flow in sync when a new snapshot arrives.
-  useEffect(() => setNodes(built.nodes), [built.nodes, setNodes]);
+  // Signature of the current node set (ids only). We only refit the view when this
+  // changes — i.e. a node was added or removed — never on a routine status refresh.
+  const nodeIdSig = useMemo(
+    () => built.nodes.map((n) => n.id).sort().join("|"),
+    [built.nodes],
+  );
+  const prevIdSig = useRef<string | null>(null);
+
+  // MERGE each snapshot into the existing graph instead of replacing it: keep every
+  // existing node's POSITION (including any the user dragged) and only refresh its
+  // data (health/labels). New nodes come in at their computed layout position;
+  // departed nodes drop out. This stops the graph from resetting on every poll.
+  useEffect(() => {
+    setNodes((prev) => {
+      const prevById = new Map(prev.map((n) => [n.id, n]));
+      return built.nodes.map((n) => {
+        const existing = prevById.get(n.id);
+        // Fresh node (type + data/health), but keep the existing position so the
+        // graph doesn't jump or lose a user-dragged layout on refresh.
+        return existing ? { ...n, position: existing.position } : n;
+      });
+    });
+    if (nodeIdSig !== prevIdSig.current) {
+      prevIdSig.current = nodeIdSig;
+      // Fit only once the new node set is committed (initial load / node appeared or left).
+      requestAnimationFrame(() => fitView({ padding: 0.2, duration: 300 }));
+    }
+  }, [built.nodes, nodeIdSig, setNodes, fitView]);
+
+  // Edges carry no position, so refreshing them (colour/animation/label) is safe.
   useEffect(() => setEdges(flowEdges), [flowEdges, setEdges]);
 
   const connectorByNode = useMemo(() => {
