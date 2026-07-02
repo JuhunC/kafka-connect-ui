@@ -24,7 +24,7 @@ import { useCurrentUser } from "../auth/useCurrentUser";
 import { useAuthActions } from "../auth/useAuthActions";
 import { useClusterContext } from "../pages/ClusterContext";
 
-export type AppTab = "topology" | "connectors" | "consumer-groups";
+export type AppTab = "topology" | "connectors" | "topics" | "consumer-groups";
 
 export interface AppLayoutProps {
   tab: AppTab;
@@ -113,6 +113,7 @@ export function AppLayout({ tab, onTabChange, children }: AppLayoutProps): React
         >
           <Tab label="Topology" value="topology" />
           <Tab label="Connectors" value="connectors" />
+          <Tab label="Topics" value="topics" />
           <Tab label="Consumer Groups" value="consumer-groups" />
         </Tabs>
       </AppBar>

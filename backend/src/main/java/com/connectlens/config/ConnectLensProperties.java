@@ -17,6 +17,7 @@ public class ConnectLensProperties {
     private Auth auth = new Auth();
     private Poll poll = new Poll();
     private ConsumerGroups consumerGroups = new ConsumerGroups();
+    private Topics topics = new Topics();
     private Oidc oidc = new Oidc();
     private Cors cors = new Cors();
 
@@ -31,6 +32,9 @@ public class ConnectLensProperties {
 
     public ConsumerGroups getConsumerGroups() { return consumerGroups; }
     public void setConsumerGroups(ConsumerGroups consumerGroups) { this.consumerGroups = consumerGroups; }
+
+    public Topics getTopics() { return topics; }
+    public void setTopics(Topics topics) { this.topics = topics; }
 
     public Oidc getOidc() { return oidc; }
     public void setOidc(Oidc oidc) { this.oidc = oidc; }
@@ -71,6 +75,19 @@ public class ConnectLensProperties {
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
         public int getMax() { return max; }
         public void setMax(int max) { this.max = max; }
+    }
+
+    /** Per-topic producer-activity reporting (Topics tab). */
+    public static class Topics {
+        private boolean enabled = true;
+        private int max = 500;          // cap on topics reported per slow poll
+        private long window = 300000;   // ACTIVE-vs-IDLE threshold on last-produced age (ms)
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public int getMax() { return max; }
+        public void setMax(int max) { this.max = max; }
+        public long getWindow() { return window; }
+        public void setWindow(long window) { this.window = window; }
     }
 
     public static class Poll {

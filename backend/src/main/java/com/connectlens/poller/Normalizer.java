@@ -5,6 +5,7 @@ import com.connectlens.connect.RawTask;
 import com.connectlens.inference.EndpointInferrer;
 import com.connectlens.inference.InferredSystem;
 import com.connectlens.kafka.ConsumerGroupInfo;
+import com.connectlens.kafka.TopicInfo;
 import com.connectlens.model.*;
 import org.springframework.stereotype.Component;
 
@@ -36,8 +37,10 @@ public class Normalizer {
                                       Map<String, RawConnector> raw,
                                       Map<String, LagDto> lagByConnector,
                                       List<ConsumerGroupInfo> consumerGroupInfos,
+                                      List<TopicInfo> topicInfos,
                                       boolean kafkaReachable,
-                                      long nowTs) {
+                                      long nowTs,
+                                      long topicWindowMs) {
         List<ConnectorDto> connectors = new ArrayList<>();
         Map<String, ConnectorDetailDto> details = new LinkedHashMap<>();
         Map<String, SysAgg> systemsById = new LinkedHashMap<>();
@@ -87,8 +90,33 @@ public class Normalizer {
             }
         }
 
+        List<TopicDto> topics = new ArrayList<>();
+        if (topicInfos != null) {
+            for (TopicInfo t : topicInfos) {
+                topics.add(mapTopic(t, nowTs, topicWindowMs));
+            }
+        }
+
         TopologyDto topology = buildTopology(clusterId, connectors, systemsById, consumerGroups, kafkaReachable);
-        return new NormalizedResult(connectors, details, systems, consumerGroups, topology);
+        return new NormalizedResult(connectors, details, systems, consumerGroups, topics, topology);
+    }
+
+    /** Derive a topic's producer-activity state + health from its last-produced timestamp. */
+    static TopicDto mapTopic(TopicInfo t, long nowTs, long windowMs) {
+        String state;
+        if (t.lastMessageTs() != null && (nowTs - t.lastMessageTs()) <= windowMs) {
+            state = "ACTIVE";
+        } else if (t.endOffsetSum() > 0 || t.lastMessageTs() != null) {
+            state = "IDLE";
+        } else {
+            state = "EMPTY";
+        }
+        Health health = switch (state) {
+            case "ACTIVE" -> Health.RUNNING;
+            case "IDLE" -> Health.DEGRADED;
+            default -> Health.PAUSED;
+        };
+        return new TopicDto(t.name(), t.partitions(), t.endOffsetSum(), t.lastMessageTs(), state, health);
     }
 
     private TopologyDto buildTopology(String clusterId, List<ConnectorDto> connectors,

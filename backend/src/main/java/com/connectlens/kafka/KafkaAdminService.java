@@ -201,6 +201,76 @@ public class KafkaAdminService {
         }
     }
 
+    /**
+     * Per-topic producer activity: partition count, summed end offsets (~records produced), and the
+     * newest record timestamp across partitions (via {@code OffsetSpec.maxTimestamp()} — no consuming).
+     * Excludes internal topics (names starting with "_"), capped at {@code max}. Never throws.
+     */
+    public List<TopicInfo> listTopicInfos(String clusterId, String bootstrap, int max) {
+        try {
+            Admin admin = adminFor(clusterId, bootstrap);
+            Set<String> names = admin.listTopics().names().get(API_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            List<String> topics = new ArrayList<>(names.stream()
+                    .filter(n -> n != null && !n.startsWith("_"))
+                    .sorted()
+                    .toList());
+            if (topics.isEmpty()) {
+                return List.of();
+            }
+            if (topics.size() > max) {
+                log.info("Cluster {} has {} topics; reporting the first {} (connectlens.topics.max)",
+                        clusterId, topics.size(), max);
+                topics = topics.subList(0, max);
+            }
+
+            Map<String, TopicDescription> descs = admin.describeTopics(topics).allTopicNames()
+                    .get(API_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+
+            Map<TopicPartition, OffsetSpec> latestSpec = new HashMap<>();
+            Map<TopicPartition, OffsetSpec> tsSpec = new HashMap<>();
+            for (TopicDescription d : descs.values()) {
+                for (TopicPartitionInfo p : d.partitions()) {
+                    TopicPartition tp = new TopicPartition(d.name(), p.partition());
+                    latestSpec.put(tp, OffsetSpec.latest());
+                    tsSpec.put(tp, OffsetSpec.maxTimestamp());
+                }
+            }
+            Map<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> ends = latestSpec.isEmpty()
+                    ? Map.of()
+                    : admin.listOffsets(latestSpec).all().get(API_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            Map<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> maxTs;
+            try {
+                maxTs = tsSpec.isEmpty()
+                        ? Map.of()
+                        : admin.listOffsets(tsSpec).all().get(API_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (Exception e) {
+                // maxTimestamp listing can be unsupported on older brokers — degrade to "no timestamp".
+                maxTs = Map.of();
+            }
+
+            List<TopicInfo> out = new ArrayList<>();
+            for (String name : topics) {
+                TopicDescription d = descs.get(name);
+                if (d == null) continue;
+                long endSum = 0;
+                long lastTs = -1;
+                for (TopicPartitionInfo p : d.partitions()) {
+                    TopicPartition tp = new TopicPartition(name, p.partition());
+                    if (ends.containsKey(tp)) endSum += Math.max(0, ends.get(tp).offset());
+                    if (maxTs.containsKey(tp)) {
+                        long t = maxTs.get(tp).timestamp();
+                        if (t > lastTs) lastTs = t;
+                    }
+                }
+                out.add(new TopicInfo(name, d.partitions().size(), endSum, lastTs > 0 ? lastTs : null));
+            }
+            return out;
+        } catch (Exception e) {
+            log.warn("Topic listing failed for cluster {} ({}): {}", clusterId, bootstrap, e.toString());
+            return List.of();
+        }
+    }
+
     @PreDestroy
     public void close() {
         admins.values().forEach(a -> {

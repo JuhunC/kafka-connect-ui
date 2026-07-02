@@ -205,6 +205,33 @@ REST: `GET /api/clusters/{id}/consumer-groups` → `ConsumerGroupDto[]` (also em
 Backend config: `connectlens.consumer-groups.enabled` (default true), `connectlens.consumer-groups.max`
 (default 200 — cap on groups described/lag-computed per slow poll, to bound broker load).
 
+### Topics + directional arrows (added v0.3.0)
+
+**Directional arrows:** every topology edge (connector AND consumer) renders an arrowhead at its
+`target` end. Direction is already encoded by `source`/`target` (source connector: external→kafka;
+sink: kafka→external; consumer: kafka→group), so the arrow points the correct way — no backend change.
+
+**Per-topic producer activity:** `ClusterSnapshotDto` gains `topics: TopicDto[]`, computed on the slow
+tier via AdminClient (`OffsetSpec.latest()` for end offsets + `OffsetSpec.maxTimestamp()` for the newest
+record timestamp — no consuming). Internal topics (names starting with `_`) are excluded.
+
+```ts
+interface TopicDto {
+  name: string;
+  partitions: number;
+  endOffsetSum: number;          // sum of latest offsets across partitions (~ records produced)
+  lastMessageTs: number | null;  // epoch millis of the most recent record across partitions; null if empty
+  state: "ACTIVE" | "IDLE" | "EMPTY";  // ACTIVE = produced within the active window; IDLE = has data, none recent; EMPTY = no data
+  health: Health;                // ACTIVE→RUNNING, IDLE→DEGRADED, EMPTY→PAUSED (for the pill)
+}
+```
+
+REST: `GET /api/clusters/{id}/topics` → `TopicDto[]` (also in the snapshot). Config:
+`connectlens.topics.enabled` (default true), `connectlens.topics.max` (default 500),
+`connectlens.topics.window` (default 300000 ms — the ACTIVE-vs-IDLE threshold on last-produced age).
+UI: a "Topics" tab (grid: Topic, Partitions, Messages, Last produced [relative], State pill), default
+sorted by most-recently-produced, so a healthy producer shows a recent timestamp + green ACTIVE.
+
 ## 6. External-system inference (backend)
 
 Given a connector's `connector.class` + config map, produce an `ExternalSystemDto`:

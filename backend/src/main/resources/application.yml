@@ -35,6 +35,10 @@ connectlens:
   consumer-groups:
     enabled: true     # discover Kafka consumer groups (topology + Consumer Groups tab)
     max: 200          # cap on groups described/lag-computed per slow poll (bounds broker load)
+  topics:
+    enabled: true     # per-topic producer activity (Topics tab)
+    max: 500          # cap on topics reported per slow poll
+    window: 300000    # ACTIVE-vs-IDLE threshold on last-produced age (ms)
   oidc:
     # issuer = what the browser-minted token carries (Keycloak KC_HOSTNAME)
     issuer: http://localhost:8081/realms/connectlens

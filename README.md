@@ -231,7 +231,9 @@ actions, cluster health panel (URP / offline / controller), authoritative sink c
 external-system inference + reachability, the KAFKA-9066 corroboration rule, transient-error
 (409/5xx) handling with stale-snapshot serving, and a **Consumer Groups** view — Kafka consumer
 groups shown as their own topology node kind (distinct from connectors, with Connect-owned
-`connect-<sink>` groups deduped out) plus a dedicated tab with state, members, topics, and lag.
+`connect-<sink>` groups deduped out) plus a dedicated tab with state, members, topics, and lag. A
+**Topics** tab reports each topic's partitions, message count, and **last-produced timestamp** (so you
+can see producers are healthy), and topology edges render **directional arrows** showing data flow.
 
 **Roadmap (P3+):** jmx_exporter → Prometheus → Grafana history and sparklines, DLQ message preview,
 an outbound alert engine (webhook/Slack/email) with hysteresis, config create/edit forms, direct

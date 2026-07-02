@@ -11,6 +11,7 @@ import type {
   ConnectorDetailDto,
   ConsumerGroupDto,
   MeDto,
+  TopicDto,
 } from "./types";
 
 /** Typed API error. `status` mirrors the HTTP status; `code` classifies known cases. */
@@ -143,6 +144,12 @@ export class ApiClient {
   getConsumerGroups(clusterId: string): Promise<ConsumerGroupDto[]> {
     return this.request<ConsumerGroupDto[]>(
       `/api/clusters/${encodeURIComponent(clusterId)}/consumer-groups`,
+    );
+  }
+
+  getTopics(clusterId: string): Promise<TopicDto[]> {
+    return this.request<TopicDto[]>(
+      `/api/clusters/${encodeURIComponent(clusterId)}/topics`,
     );
   }
 

@@ -138,6 +138,15 @@ export interface TopologyDto {
   edges: TopologyEdgeDto[];
 }
 
+export interface TopicDto {
+  name: string;
+  partitions: number;
+  endOffsetSum: number;
+  lastMessageTs: number | null;
+  state: "ACTIVE" | "IDLE" | "EMPTY";
+  health: Health;
+}
+
 export interface ClusterSnapshotDto {
   clusterId: string;
   name: string;
@@ -148,4 +157,5 @@ export interface ClusterSnapshotDto {
   externalSystems: ExternalSystemDto[];
   consumerGroups: ConsumerGroupDto[];
   topology: TopologyDto;
+  topics: TopicDto[];
 }

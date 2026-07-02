@@ -1,7 +1,9 @@
 package com.connectlens.poller;
 
+import com.connectlens.kafka.TopicInfo;
 import com.connectlens.model.Health;
 import com.connectlens.model.TaskDto;
+import com.connectlens.model.TopicDto;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -59,6 +61,23 @@ class NormalizerLogicTest {
         assertThat(Normalizer.consumerGroupHealth("CompletingRebalance")).isEqualTo(Health.RESTARTING);
         assertThat(Normalizer.consumerGroupHealth("Unknown")).isEqualTo(Health.UNKNOWN);
         assertThat(Normalizer.consumerGroupHealth(null)).isEqualTo(Health.UNKNOWN);
+    }
+
+    @Test
+    void topicStateFromLastProduced() {
+        long now = 1_000_000_000L;
+        long window = 300_000L;
+        TopicDto active = Normalizer.mapTopic(new TopicInfo("t1", 3, 100, now - 1_000), now, window);
+        assertThat(active.state()).isEqualTo("ACTIVE");
+        assertThat(active.health()).isEqualTo(Health.RUNNING);
+
+        TopicDto idle = Normalizer.mapTopic(new TopicInfo("t2", 1, 50, now - 600_000), now, window);
+        assertThat(idle.state()).isEqualTo("IDLE");
+        assertThat(idle.health()).isEqualTo(Health.DEGRADED);
+
+        TopicDto empty = Normalizer.mapTopic(new TopicInfo("t3", 1, 0, null), now, window);
+        assertThat(empty.state()).isEqualTo("EMPTY");
+        assertThat(empty.health()).isEqualTo(Health.PAUSED);
     }
 
     @Test

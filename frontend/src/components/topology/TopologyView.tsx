@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, type ReactElement } from "react";
 import {
   Background,
   Controls,
+  MarkerType,
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
@@ -153,6 +154,11 @@ function TopologyInner({
         const color = edgeColor(theme, e.health);
         const running = e.health === "RUNNING";
         const isConsumer = e.kind === "consumer";
+        // Arrowheads point at the target end (direction is already baked into
+        // source/target by the backend) and match the edge's own color so the
+        // flow direction reads clearly: health color for connectors, the
+        // secondary/purple palette for consumer edges.
+        const arrowColor = isConsumer ? theme.palette.secondary.main : color;
         // Attach the appropriate handles for left- vs right-side externals.
         const isOut = e.direction === "out";
         return {
@@ -163,6 +169,12 @@ function TopologyInner({
           targetHandle: isOut ? undefined : "r-t",
           label: e.label,
           animated: running && !reducedMotion,
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: arrowColor,
+            width: 18,
+            height: 18,
+          },
           // Consumer edges are visually distinct: dashed line tinted with the
           // secondary palette, so they read differently from connector edges.
           style: isConsumer

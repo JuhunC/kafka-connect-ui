@@ -6,6 +6,7 @@ import { Alert, Container } from "@mui/material";
 import { AppLayout, type AppTab } from "../components/AppLayout";
 import { TopologyPage } from "./TopologyPage";
 import { ConnectorsPage } from "./ConnectorsPage";
+import { TopicsPage } from "./TopicsPage";
 import { ConsumerGroupsPage } from "./ConsumerGroupsPage";
 import { ConnectorDetailDrawer } from "../components/ConnectorDetailDrawer";
 import { useClusterContext } from "./ClusterContext";
@@ -50,6 +51,7 @@ export function Dashboard(): ReactElement {
         />
       )}
       {tab === "connectors" && <ConnectorsPage onConnectorSelect={openConnector} />}
+      {tab === "topics" && <TopicsPage />}
       {tab === "consumer-groups" && (
         <ConsumerGroupsPage
           focusedGroupId={focusedGroup}

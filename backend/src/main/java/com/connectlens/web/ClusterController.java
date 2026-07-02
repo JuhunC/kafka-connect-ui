@@ -70,6 +70,12 @@ public class ClusterController {
         return store.getSnapshot(clusterId).map(ClusterSnapshotDto::consumerGroups).orElseGet(List::of);
     }
 
+    @GetMapping("/{clusterId}/topics")
+    public List<TopicDto> topics(@PathVariable String clusterId) {
+        requireCluster(clusterId);
+        return store.getSnapshot(clusterId).map(ClusterSnapshotDto::topics).orElseGet(List::of);
+    }
+
     @PostMapping("/{clusterId}/connectors/{name}/pause")
     @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
     public ResponseEntity<Void> pause(@PathVariable String clusterId, @PathVariable String name) {
@@ -117,6 +123,6 @@ public class ClusterController {
                         c.getId(), "hub", Health.UNKNOWN, null)),
                 List.of());
         return new ClusterSnapshotDto(c.getId(), c.getName(), null, true,
-                ClusterHealthDto.unknown(c.getId()), List.of(), List.of(), List.of(), topo);
+                ClusterHealthDto.unknown(c.getId()), List.of(), List.of(), List.of(), List.of(), topo);
     }
 }

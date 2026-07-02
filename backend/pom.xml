@@ -13,7 +13,7 @@
 
     <groupId>com.connectlens</groupId>
     <artifactId>connectlens-backend</artifactId>
-    <version>0.2.0</version>
+    <version>0.3.0</version>
     <name>ConnectLens Backend</name>
     <description>Real-time Kafka + Kafka Connect connected-systems aggregator</description>
 

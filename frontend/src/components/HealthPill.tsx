@@ -42,6 +42,8 @@ export interface HealthPillProps {
   reachability?: Reachability;
   size?: ChipProps["size"];
   variant?: ChipProps["variant"];
+  /** Override the displayed text (color + icon still derive from health/reachability). */
+  label?: string;
 }
 
 export function HealthPill({
@@ -49,10 +51,13 @@ export function HealthPill({
   reachability,
   size = "small",
   variant = "filled",
+  label,
 }: HealthPillProps): ReactElement {
   const d: Descriptor = reachability
     ? REACHABILITY_MAP[reachability]
     : HEALTH_MAP[health ?? "UNKNOWN"];
+
+  const text = label ?? d.label;
 
   return (
     <Chip
@@ -60,8 +65,8 @@ export function HealthPill({
       variant={variant}
       color={d.color}
       icon={d.icon}
-      label={d.label}
-      aria-label={`Status: ${d.label}`}
+      label={text}
+      aria-label={`Status: ${text}`}
     />
   );
 }
