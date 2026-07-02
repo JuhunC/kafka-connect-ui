@@ -1,7 +1,7 @@
 // Dashboard: the authenticated app shell. Owns the active tab + the selected
-// connector for the detail drawer, and renders the correct page.
+// connector / consumer group for their detail drawers, and renders the correct page.
 
-import { useState, type ReactElement } from "react";
+import { useMemo, useState, type ReactElement } from "react";
 import { Alert, Container } from "@mui/material";
 import { AppLayout, type AppTab } from "../components/AppLayout";
 import { TopologyPage } from "./TopologyPage";
@@ -9,23 +9,28 @@ import { ConnectorsPage } from "./ConnectorsPage";
 import { TopicsPage } from "./TopicsPage";
 import { ConsumerGroupsPage } from "./ConsumerGroupsPage";
 import { ConnectorDetailDrawer } from "../components/ConnectorDetailDrawer";
+import { ConsumerGroupDetailDrawer } from "../components/ConsumerGroupDetailDrawer";
 import { useClusterContext } from "./ClusterContext";
 
 export function Dashboard(): ReactElement {
   const [tab, setTab] = useState<AppTab>("topology");
   const [selectedConnector, setSelectedConnector] = useState<string | null>(null);
-  const [focusedGroup, setFocusedGroup] = useState<string | null>(null);
-  const { selectedClusterId, clusters, clustersLoading, clustersError } = useClusterContext();
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const { selectedClusterId, snapshot, clusters, clustersLoading, clustersError } =
+    useClusterContext();
 
   const openConnector = (name: string) => setSelectedConnector(name);
   const closeConnector = () => setSelectedConnector(null);
 
-  // Clicking a consumer group in the topology jumps to the Consumer Groups tab
-  // and focuses that group's detail drawer.
-  const openConsumerGroup = (groupId: string) => {
-    setFocusedGroup(groupId);
-    setTab("consumer-groups");
-  };
+  // Clicking a consumer group anywhere (incl. the topology graph) opens its detail
+  // drawer as an overlay on the current tab — same UX as clicking a connector.
+  const openConsumerGroup = (groupId: string) => setSelectedGroup(groupId);
+  const closeConsumerGroup = () => setSelectedGroup(null);
+
+  const consumerGroup = useMemo(
+    () => snapshot?.consumerGroups.find((g) => g.groupId === selectedGroup) ?? null,
+    [snapshot, selectedGroup],
+  );
 
   return (
     <AppLayout tab={tab} onTabChange={setTab}>
@@ -54,8 +59,7 @@ export function Dashboard(): ReactElement {
       {tab === "topics" && <TopicsPage />}
       {tab === "consumer-groups" && (
         <ConsumerGroupsPage
-          focusedGroupId={focusedGroup}
-          onClearFocus={() => setFocusedGroup(null)}
+          onConsumerSelect={openConsumerGroup}
         />
       )}
 
@@ -67,6 +71,8 @@ export function Dashboard(): ReactElement {
           onClose={closeConnector}
         />
       )}
+
+      <ConsumerGroupDetailDrawer group={consumerGroup} onClose={closeConsumerGroup} />
     </AppLayout>
   );
 }

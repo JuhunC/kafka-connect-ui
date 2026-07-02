@@ -36,6 +36,19 @@ function relativeTime(ts: number | null): string {
   return `${days}d ago`;
 }
 
+/** What each topic state means, shown as a legend + per-row tooltip. */
+const STATE_HELP: Record<TopicDto["state"], string> = {
+  ACTIVE: "A message was produced recently (within the active window) — producers are writing.",
+  IDLE: "The topic has data, but nothing has been produced recently — the producer may have stopped.",
+  EMPTY: "No messages have ever been produced to this topic.",
+};
+
+const STATE_LEGEND: { state: TopicDto["state"]; health: TopicDto["health"]; desc: string }[] = [
+  { state: "ACTIVE", health: "RUNNING", desc: "producing (recent messages)" },
+  { state: "IDLE", health: "DEGRADED", desc: "has data, none recently" },
+  { state: "EMPTY", health: "PAUSED", desc: "no messages yet" },
+];
+
 export function TopicsPage(): ReactElement {
   const { snapshot } = useClusterContext();
 
@@ -96,7 +109,11 @@ export function TopicsPage(): ReactElement {
         width: 160,
         sortable: true,
         renderCell: (params: GridRenderCellParams<Row, Row["state"]>) => (
-          <HealthPill health={params.row.health} label={params.value} />
+          <Tooltip title={params.value ? STATE_HELP[params.value] : ""}>
+            <span>
+              <HealthPill health={params.row.health} label={params.value} />
+            </span>
+          </Tooltip>
         ),
       },
     ],
@@ -120,6 +137,16 @@ export function TopicsPage(): ReactElement {
         Shows the last time a message was produced to each topic — a recent time and a green
         ACTIVE pill mean producers are healthy and writing.
       </Typography>
+      <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap alignItems="center">
+        {STATE_LEGEND.map((s) => (
+          <Stack key={s.state} direction="row" spacing={0.75} alignItems="center">
+            <HealthPill health={s.health} label={s.state} />
+            <Typography variant="caption" color="text.secondary">
+              {s.desc}
+            </Typography>
+          </Stack>
+        ))}
+      </Stack>
       <Paper variant="outlined" sx={{ p: 1 }}>
         {rows.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
