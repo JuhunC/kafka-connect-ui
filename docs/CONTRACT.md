@@ -46,13 +46,13 @@ Bound from config/env, prefix `connectlens.clusters`. Each entry:
 ```
 connectlens.clusters[0].id=local
 connectlens.clusters[0].name=Local Dev
-connectlens.clusters[0].bootstrap-servers=kafka:9092
-connectlens.clusters[0].connect-url=http://connect:8083
+connectlens.clusters[0].bootstrap=kafka:9092
+connectlens.clusters[0].connect=http://connect:8083
 ```
 Env form (Spring relaxed binding): `CONNECTLENS_CLUSTERS_0_ID`, `CONNECTLENS_CLUSTERS_0_NAME`,
-`CONNECTLENS_CLUSTERS_0_BOOTSTRAP__SERVERS`, `CONNECTLENS_CLUSTERS_0_CONNECT__URL`.
-Multi-cluster: increment the index. Poll cadence config: `connectlens.poll.fast-interval-ms` (default 4000),
-`connectlens.poll.slow-interval-ms` (default 30000).
+`CONNECTLENS_CLUSTERS_0_BOOTSTRAP`, `CONNECTLENS_CLUSTERS_0_CONNECT` (single-word fields; single underscore).
+Multi-cluster: increment the index. Poll cadence: `connectlens.poll.fast-ms` (default 4000),
+`connectlens.poll.slow-ms` (default 10000), `connectlens.poll.enabled` (default true).
 
 ## 3. REST API (backend, all JSON, base `/api`)
 

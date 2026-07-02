@@ -7,8 +7,13 @@ import java.util.List;
 
 /**
  * Root configuration bound from the {@code connectlens.*} namespace.
- * Field names are single words so environment-variable binding is unambiguous:
- *   CONNECTLENS_CLUSTERS_0_BOOTSTRAP, CONNECTLENS_OIDC_JWKS, CONNECTLENS_POLL_FAST_MS, ...
+ * <p>
+ * Environment-variable binding: single-word fields map 1:1
+ * (CONNECTLENS_CLUSTERS_0_BOOTSTRAP, CONNECTLENS_OIDC_JWKS). Kebab-case / multi-word properties
+ * drop the dash in env form (no extra underscore), e.g.
+ * {@code connectlens.poll.fast-ms} → CONNECTLENS_POLL_FASTMS,
+ * {@code connectlens.consumer-groups.max} → CONNECTLENS_CONSUMERGROUPS_MAX,
+ * {@code connectlens.cors.allowed-origins} → CONNECTLENS_CORS_ALLOWEDORIGINS.
  */
 @ConfigurationProperties(prefix = "connectlens")
 public class ConnectLensProperties {
@@ -93,7 +98,7 @@ public class ConnectLensProperties {
     public static class Poll {
         private boolean enabled = true;
         private long fastMs = 4000;
-        private long slowMs = 30000;
+        private long slowMs = 10000;
         public boolean isEnabled() { return enabled; }
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
         public long getFastMs() { return fastMs; }

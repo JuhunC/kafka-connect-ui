@@ -143,8 +143,8 @@ public class ConnectRestClient {
     public RootInfo getRoot(String base) {
         try {
             JsonNode n = rest.get().uri(base + "/").retrieve().body(JsonNode.class);
-            if (n == null) return new RootInfo(null, null);
-            return new RootInfo(text(n, "version"), text(n, "kafka_cluster_id"));
+            if (n == null) return new RootInfo(null);
+            return new RootInfo(text(n, "version"));
         } catch (Exception e) {
             throw new ConnectUnavailableException("Connect root unreachable at " + base, e);
         }

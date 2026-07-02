@@ -53,6 +53,29 @@ class NormalizerLogicTest {
     }
 
     @Test
+    void maskingCoversCredentialsWithoutOverMasking() {
+        Map<String, String> masked = Normalizer.maskConfig(Map.of(
+                "key.converter", "org.apache.kafka.connect.json.JsonConverter",
+                "value.converter", "org.apache.kafka.connect.json.JsonConverter",
+                "sasl.jaas.config", "PlainLoginModule required username=\"u\" password=\"p\";",
+                "consumer.override.sasl.jaas.config", "x",
+                "aws.secret.access.key", "AKIAEXAMPLE",
+                "http.headers.Authorization", "Bearer xyz",
+                "connection.url", "jdbc:postgresql://user:pw@db:5432/app",
+                "topics", "app.events"));
+        // Public config must NOT be over-masked (regression: bare \\bkey\\b masked key.converter):
+        assertThat(masked.get("key.converter")).isEqualTo("org.apache.kafka.connect.json.JsonConverter");
+        assertThat(masked.get("value.converter")).isEqualTo("org.apache.kafka.connect.json.JsonConverter");
+        assertThat(masked.get("topics")).isEqualTo("app.events");
+        // Real credentials must be masked, by key name or by value content:
+        assertThat(masked.get("sasl.jaas.config")).isEqualTo("********");
+        assertThat(masked.get("consumer.override.sasl.jaas.config")).isEqualTo("********");
+        assertThat(masked.get("aws.secret.access.key")).isEqualTo("********");
+        assertThat(masked.get("http.headers.Authorization")).isEqualTo("********");
+        assertThat(masked.get("connection.url")).isEqualTo("********");
+    }
+
+    @Test
     void consumerGroupStateMapsToHealth() {
         assertThat(Normalizer.consumerGroupHealth("Stable")).isEqualTo(Health.RUNNING);
         assertThat(Normalizer.consumerGroupHealth("Empty")).isEqualTo(Health.PAUSED);

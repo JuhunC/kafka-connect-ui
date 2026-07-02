@@ -49,6 +49,27 @@ class EndpointInferrerTest {
     }
 
     @Test
+    void sanitizeEndpointStripsCredentials() {
+        assertThat(EndpointInferrer.sanitizeEndpoint("mongodb://user:pass@host:27017/db"))
+                .isEqualTo("mongodb://host:27017/db");
+        assertThat(EndpointInferrer.sanitizeEndpoint("https://user:token@es:9200"))
+                .isEqualTo("https://es:9200");
+        assertThat(EndpointInferrer.sanitizeEndpoint("jdbc:postgresql://h:5432/db?user=x&password=y"))
+                .isEqualTo("jdbc:postgresql://h:5432/db");
+        assertThat(EndpointInferrer.sanitizeEndpoint("https://splunk:8088")).isEqualTo("https://splunk:8088");
+    }
+
+    @Test
+    void inferredEndpointHasNoEmbeddedCredentials() {
+        InferredSystem s = inferrer.infer(
+                "io.confluent.connect.jdbc.JdbcSinkConnector", "sink",
+                Map.of("connection.url", "jdbc:postgresql://svc:secretpw@db:5432/app"));
+        assertThat(s).isNotNull();
+        assertThat(s.endpoint()).doesNotContain("secretpw");
+        assertThat(s.endpoint()).doesNotContain("svc:");
+    }
+
+    @Test
     void hostParsingHandlesJdbcAndScheme() {
         assertThat(EndpointInferrer.hostOf("jdbc:postgresql://db-host:5432/app")).isEqualTo("db-host");
         assertThat(EndpointInferrer.hostOf("https://user@es-host:9200/index")).isEqualTo("es-host");

@@ -23,8 +23,16 @@ import java.util.regex.Pattern;
 @Component
 public class Normalizer {
 
-    private static final Pattern SECRET_KEY =
-            Pattern.compile("(?i).*(password|secret|token|credential|passphrase|private|\\bkey\\b|\\.key$).*");
+    // Config KEY names that carry secrets. Deliberately does NOT match key.converter / key.ignore /
+    // message.key.columns etc. (no bare "key"); it does match sasl.jaas.config, *.password,
+    // aws.secret.access.key, http.headers.Authorization, apiKey, and any name ending in ".key".
+    private static final Pattern SECRET_KEY = Pattern.compile(
+            "(?i).*(password|passwd|secret|credential|passphrase|token|jaas|apikey|authorization"
+                    + "|access[._-]?key|private[._-]?key|\\.key$).*");
+    // Config VALUES that embed credentials regardless of key name: a JAAS/JDBC "password=" clause,
+    // or a URL with userinfo (scheme://user:pass@host).
+    private static final Pattern SECRET_VALUE =
+            Pattern.compile("(?i)(password\\s*=|://[^\\s/@]+:[^\\s/@]+@)");
     private static final String MASK = "********";
 
     private final EndpointInferrer inferrer;
@@ -237,9 +245,17 @@ public class Normalizer {
     static Map<String, String> maskConfig(Map<String, String> config) {
         Map<String, String> out = new LinkedHashMap<>();
         for (Map.Entry<String, String> e : config.entrySet()) {
-            out.put(e.getKey(), SECRET_KEY.matcher(e.getKey()).matches() ? MASK : e.getValue());
+            out.put(e.getKey(), isSecret(e.getKey(), e.getValue()) ? MASK : e.getValue());
         }
         return out;
+    }
+
+    /** A config entry is secret if its key name looks secret, or its value embeds a credential. */
+    static boolean isSecret(String key, String value) {
+        if (key != null && SECRET_KEY.matcher(key).matches()) {
+            return true;
+        }
+        return value != null && SECRET_VALUE.matcher(value).find();
     }
 
     /** Aggregates connectors that point at the same external system. */

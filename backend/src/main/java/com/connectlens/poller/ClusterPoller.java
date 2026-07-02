@@ -52,12 +52,11 @@ public class ClusterPoller {
 
     private final ScheduledExecutorService exec;
     private volatile boolean running = false;
-    private long cycle = 0;
     private long lastSlowTs = 0L;
 
     // slow-tier caches, reused on fast cycles
     private KafkaClusterInfo kafkaInfo = KafkaClusterInfo.unreachable();
-    private RootInfo rootInfo = new RootInfo(null, null);
+    private RootInfo rootInfo = new RootInfo(null);
     private Map<String, LagDto> lagCache = new HashMap<>();
     private List<ConsumerGroupInfo> consumerGroupCache = List.of();
     private List<TopicInfo> topicCache = List.of();
@@ -104,7 +103,6 @@ public class ClusterPoller {
         } catch (Exception e) {
             log.warn("Unexpected poll error for cluster {}: {}", cluster.getId(), e.toString());
         } finally {
-            cycle++;
             if (running) {
                 exec.schedule(this::runCycle, fastMs, TimeUnit.MILLISECONDS);
             }
@@ -131,7 +129,7 @@ public class ClusterPoller {
             try {
                 rootInfo = connect.getRoot(cluster.getConnect());
             } catch (Exception e) {
-                rootInfo = new RootInfo(null, null);
+                rootInfo = new RootInfo(null);
             }
             Map<String, LagDto> newLag = new HashMap<>();
             Set<String> connectGroups = new HashSet<>();

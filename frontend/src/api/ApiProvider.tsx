@@ -4,7 +4,7 @@
 // When auth is disabled (config.authEnabled === false) there is no token, so
 // the provider supplies a null token provider and never touches react-oidc.
 
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useRef, type ReactNode } from "react";
 import { useAuth } from "react-oidc-context";
 import { config } from "../config";
 import { ApiClient } from "./client";
@@ -15,13 +15,20 @@ const ApiContext = createContext<ApiClient | null>(null);
 function AuthedApiProvider({ children }: { children: ReactNode }): ReactNode {
   const auth = useAuth();
 
+  // Keep the latest auth in a ref so the ApiClient's getToken closure always
+  // sees the freshest token without changing the ApiClient identity. This means
+  // a silent token renewal does not create a new client (which would otherwise
+  // tear down consumers keyed on the client instance, e.g. the SSE stream).
+  const authRef = useRef(auth);
+  authRef.current = auth;
+
   const client = useMemo(
     () =>
       new ApiClient({
         // Read the token lazily on each request so renewed tokens are picked up.
-        getToken: () => auth.user?.access_token,
+        getToken: () => authRef.current.user?.access_token ?? null,
       }),
-    [auth.user?.access_token],
+    [],
   );
 
   return <ApiContext.Provider value={client}>{children}</ApiContext.Provider>;

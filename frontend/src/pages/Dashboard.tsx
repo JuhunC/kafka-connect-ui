@@ -1,7 +1,7 @@
 // Dashboard: the authenticated app shell. Owns the active tab + the selected
 // connector / consumer group for their detail drawers, and renders the correct page.
 
-import { useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { Alert, Container } from "@mui/material";
 import { AppLayout, type AppTab } from "../components/AppLayout";
 import { TopologyPage } from "./TopologyPage";
@@ -18,6 +18,14 @@ export function Dashboard(): ReactElement {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const { selectedClusterId, snapshot, clusters, clustersLoading, clustersError } =
     useClusterContext();
+
+  // Clear any open detail drawer when the selected cluster changes so a stale
+  // connector drawer does not 404 and a stale group drawer does not silently
+  // close. Both start null, so the initial run is a harmless no-op.
+  useEffect(() => {
+    setSelectedConnector(null);
+    setSelectedGroup(null);
+  }, [selectedClusterId]);
 
   const openConnector = (name: string) => setSelectedConnector(name);
   const closeConnector = () => setSelectedConnector(null);

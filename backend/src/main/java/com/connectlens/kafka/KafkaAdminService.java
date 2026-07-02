@@ -25,6 +25,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
@@ -87,6 +88,32 @@ public class KafkaAdminService {
     }
 
     /**
+     * Latest (end) offsets for the given partitions, resolved PER PARTITION so a single
+     * non-existent/failed partition (e.g. a stale committed offset for a deleted topic) does not
+     * fail the whole batch. Failing partitions are omitted (callers treat missing as lag 0).
+     */
+    private Map<TopicPartition, Long> latestOffsets(Admin admin, Set<TopicPartition> partitions) {
+        Map<TopicPartition, Long> out = new HashMap<>();
+        if (partitions == null || partitions.isEmpty()) {
+            return out;
+        }
+        Map<TopicPartition, OffsetSpec> spec = new HashMap<>();
+        for (TopicPartition tp : partitions) {
+            spec.put(tp, OffsetSpec.latest());
+        }
+        ListOffsetsResult result = admin.listOffsets(spec);
+        for (TopicPartition tp : partitions) {
+            try {
+                out.put(tp, result.partitionResult(tp)
+                        .get(API_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS).offset());
+            } catch (Exception e) {
+                // Partition no longer exists / failed to resolve — skip it (treated as lag 0).
+            }
+        }
+        return out;
+    }
+
+    /**
      * Authoritative lag for a sink connector: lag = endOffset − committedOffset summed over the
      * partitions the {@code connect-<name>} consumer group has committed. Returns null if the group
      * has no committed offsets yet (e.g. a freshly created or failed sink) or on error.
@@ -101,19 +128,14 @@ public class KafkaAdminService {
             if (committed == null || committed.isEmpty()) {
                 return null;
             }
-            Map<TopicPartition, OffsetSpec> latestSpec = new HashMap<>();
-            for (TopicPartition tp : committed.keySet()) {
-                latestSpec.put(tp, OffsetSpec.latest());
-            }
-            Map<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> end = admin.listOffsets(latestSpec)
-                    .all().get(API_TIMEOUT.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+            Map<TopicPartition, Long> end = latestOffsets(admin, committed.keySet());
 
             List<LagPartitionDto> parts = new ArrayList<>();
             long total = 0;
             for (Map.Entry<TopicPartition, OffsetAndMetadata> e : committed.entrySet()) {
                 TopicPartition tp = e.getKey();
                 long current = e.getValue().offset();
-                long endOffset = end.containsKey(tp) ? end.get(tp).offset() : current;
+                long endOffset = end.containsKey(tp) ? end.get(tp) : current;
                 long lag = Math.max(0, endOffset - current);
                 total += lag;
                 parts.add(new LagPartitionDto(tp.topic(), tp.partition(), current, endOffset, lag));
@@ -163,15 +185,11 @@ public class KafkaAdminService {
             Map<String, Map<TopicPartition, OffsetAndMetadata>> committedByGroup =
                     admin.listConsumerGroupOffsets(spec).all().get(API_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
 
-            Map<TopicPartition, OffsetSpec> latestSpec = new HashMap<>();
+            Set<TopicPartition> allTps = new HashSet<>();
             for (Map<TopicPartition, OffsetAndMetadata> m : committedByGroup.values()) {
-                for (TopicPartition tp : m.keySet()) {
-                    latestSpec.put(tp, OffsetSpec.latest());
-                }
+                allTps.addAll(m.keySet());
             }
-            Map<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> ends = latestSpec.isEmpty()
-                    ? Map.of()
-                    : admin.listOffsets(latestSpec).all().get(API_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            Map<TopicPartition, Long> ends = latestOffsets(admin, allTps);
 
             List<ConsumerGroupInfo> out = new ArrayList<>();
             for (String id : ids) {
@@ -188,7 +206,7 @@ public class KafkaAdminService {
                     TopicPartition tp = e.getKey();
                     topics.add(tp.topic());
                     long c = e.getValue().offset();
-                    long end = ends.containsKey(tp) ? ends.get(tp).offset() : c;
+                    long end = ends.containsKey(tp) ? ends.get(tp) : c;
                     lag += Math.max(0, end - c);
                 }
                 out.add(new ConsumerGroupInfo(id, state, members, coordinator,

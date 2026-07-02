@@ -7,7 +7,6 @@ import {
   Card,
   CardContent,
   Chip,
-  Link,
   Stack,
   Typography,
 } from "@mui/material";
@@ -89,14 +88,5 @@ export function ExternalSystemCard({
         </Stack>
       </CardContent>
     </Card>
-  );
-}
-
-/** Compact inline reference used inside topology nodes / snapshots. */
-export function ExternalSystemSummary({ system }: { system: ExternalSystemDto }): ReactElement {
-  return (
-    <Link component="span" underline="none" color="inherit">
-      {system.displayName}
-    </Link>
   );
 }

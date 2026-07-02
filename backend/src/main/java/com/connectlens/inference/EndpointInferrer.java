@@ -42,14 +42,14 @@ public class EndpointInferrer {
             String uri = firstNonBlank(config.get("splunk.hec.uri"), config.get("splunk.hec.raw.endpoint"), "");
             String host = hostOf(uri);
             return new InferredSystem("splunk:" + slug(host, uri), "splunk",
-                    "Splunk " + firstNonBlank(host, uri), blankToNull(uri), "sink");
+                    "Splunk " + firstNonBlank(host, uri), sanitizeEndpoint(uri), "sink");
         }
         // Elasticsearch / OpenSearch
         if (cls.toLowerCase().contains("elasticsearch") || cls.toLowerCase().contains("opensearch")) {
             String url = firstNonBlank(config.get("connection.url"), config.get("connection.hosts"), "");
             String kind = cls.toLowerCase().contains("opensearch") ? "opensearch" : "elasticsearch";
             return new InferredSystem(kind + ":" + slug(hostOf(url), url), kind,
-                    capitalize(kind) + " " + firstNonBlank(hostOf(url), url), blankToNull(url), "sink");
+                    capitalize(kind) + " " + firstNonBlank(hostOf(url), url), sanitizeEndpoint(url), "sink");
         }
         // S3
         if (cls.toLowerCase().contains("s3")) {
@@ -68,7 +68,7 @@ public class EndpointInferrer {
             String url = firstNonBlank(config.get("connection.url"), "");
             String host = hostOf(url);
             return new InferredSystem("jdbc:" + slug(host, url), "jdbc",
-                    "JDBC " + firstNonBlank(host, "database"), blankToNull(url), role);
+                    "JDBC " + firstNonBlank(host, "database"), sanitizeEndpoint(url), role);
         }
         // Fallback: any endpoint-like config key
         for (Map.Entry<String, String> e : config.entrySet()) {
@@ -76,7 +76,7 @@ public class EndpointInferrer {
                 String v = e.getValue();
                 String host = hostOf(v);
                 return new InferredSystem("generic:" + slug(host, v), "generic",
-                        firstNonBlank(host, v), v, role);
+                        firstNonBlank(host, v), sanitizeEndpoint(v), role);
             }
         }
         return null;
@@ -88,6 +88,19 @@ public class EndpointInferrer {
         if (lower.endsWith("sourceconnector") || lower.contains("source")) return "source";
         if ("source".equals(type) || "sink".equals(type)) return type;
         return "unknown";
+    }
+
+    /** Remove credentials from a URL/connection string before exposing it as an endpoint:
+     *  strip {@code scheme://user:pass@} userinfo and drop a credential-bearing query string. */
+    static String sanitizeEndpoint(String value) {
+        if (value == null || value.isBlank()) return null;
+        String v = value.trim().replaceAll("://[^/@\\s]*@", "://");
+        int q = v.indexOf('?');
+        if (q >= 0 && v.substring(q + 1).toLowerCase()
+                .matches(".*(password|secret|token|credential|user|apikey|key)=.*")) {
+            v = v.substring(0, q);
+        }
+        return v;
     }
 
     /** Extract a host from a URL, JDBC string, or host:port. */

@@ -74,11 +74,11 @@ export function ClusterPanel({ cluster, stale }: ClusterPanelProps): ReactElemen
 
         <Grid container spacing={2}>
           <Grid size={{ xs: 6, sm: 4, md: 3 }}>
-            <Metric
-              label="Brokers up / total"
-              value={`${cluster.brokersUp} / ${cluster.brokersTotal}`}
-              danger={cluster.brokersTotal > 0 && cluster.brokersUp < cluster.brokersTotal}
-            />
+            {/* AdminClient only reports live brokers, so brokersUp always equals
+                brokersTotal — a "up / total" ratio can never flag a down broker.
+                Show the live count; the real outage signals are the
+                under-replicated / offline-partition metrics below. */}
+            <Metric label="Brokers online" value={cluster.brokersUp} />
           </Grid>
           <Grid size={{ xs: 6, sm: 4, md: 3 }}>
             <Metric label="Topics" value={cluster.topicCount} />

@@ -51,5 +51,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate compose config
-        run: docker compose config -q
+      - name: Validate compose configs
+        run: |
+          docker compose -f docker-compose.yml config -q
+          docker compose -f docker-compose.app.yml config -q
+          docker compose -f docker-compose.noauth.yml config -q
+          docker compose -f docker-compose.yml -f docker-compose.ghcr.yml config -q

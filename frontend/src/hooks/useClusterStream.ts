@@ -22,7 +22,7 @@ import { config } from "../config";
 import type { ClusterSnapshotDto } from "../api/types";
 import { useApi } from "../api/ApiProvider";
 
-const FAST_INTERVAL_MS = 4000; // mirrors connectlens.poll.fast-interval-ms default
+const FAST_INTERVAL_MS = 4000; // mirrors connectlens.poll.fast-ms default (4000)
 
 export type StreamStatus = "connecting" | "open" | "polling" | "error";
 
@@ -59,11 +59,25 @@ export function useClusterStream(clusterId: string | null): ClusterStreamState {
   const activeClusterRef = useRef<string | null>(clusterId);
   activeClusterRef.current = clusterId;
 
+  // Keep the current token / stable deps in refs so a silent token renewal does
+  // NOT re-run the connect effect (which would abort + reopen the stream and
+  // reset snapshot→null). The stream reads the freshest token at connect time
+  // and via the request closure; the ApiClient identity is stable across
+  // renewals (see AuthedApiProvider), so one long-lived stream survives renewal.
+  const tokenRef = useRef(accessToken);
+  tokenRef.current = accessToken;
+  const apiRef = useRef(api);
+  apiRef.current = api;
+  const queryClientRef = useRef(queryClient);
+  queryClientRef.current = queryClient;
+
   useEffect(() => {
     // With auth on we require a token before connecting; with auth off we
-    // connect as soon as we have a cluster.
+    // connect as soon as we have a cluster. Read the token from the ref so this
+    // effect does not need `accessToken` in its dep array (renewals must not
+    // re-run it).
     if (!clusterId) return;
-    if (config.authEnabled && !accessToken) return;
+    if (config.authEnabled && !tokenRef.current) return;
 
     // Reset when the target cluster changes.
     setSnapshot(null);
@@ -77,7 +91,9 @@ export function useClusterStream(clusterId: string | null): ClusterStreamState {
     const applySnapshot = (dto: ClusterSnapshotDto) => {
       if (activeClusterRef.current !== clusterId) return;
       setSnapshot(dto);
-      queryClient.setQueryData(snapshotQueryKey(clusterId), dto);
+      // Fresh data clears any lingering one-off stream `error` message.
+      setError(null);
+      queryClientRef.current.setQueryData(snapshotQueryKey(clusterId), dto);
     };
 
     const startPolling = () => {
@@ -85,10 +101,9 @@ export function useClusterStream(clusterId: string | null): ClusterStreamState {
       setStatus("polling");
       const tick = async () => {
         try {
-          const dto = await api.getSnapshot(clusterId);
+          const dto = await apiRef.current.getSnapshot(clusterId);
           if (!stopped) {
             applySnapshot(dto);
-            setError(null);
           }
         } catch (e) {
           if (!stopped) setError(e instanceof Error ? e.message : "Polling failed");
@@ -107,10 +122,12 @@ export function useClusterStream(clusterId: string | null): ClusterStreamState {
 
     const connect = async () => {
       try {
+        // Read the freshest token at connect time from the ref.
+        const token = tokenRef.current;
         await fetchEventSource(`${config.apiBase}/api/clusters/${encodeURIComponent(clusterId)}/events`, {
           signal: abort.signal,
           // No Authorization header when auth is disabled (there is no token).
-          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
           openWhenHidden: true,
           async onopen(response) {
             const ct = response.headers.get("content-type") ?? "";
@@ -177,7 +194,10 @@ export function useClusterStream(clusterId: string | null): ClusterStreamState {
       abort.abort();
       stopPolling();
     };
-  }, [clusterId, accessToken, api, queryClient]);
+    // Only re-run when the target cluster changes. Token/api/queryClient are
+    // read via refs so a silent token renewal never tears down the stream.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clusterId]);
 
   return { snapshot, status, error };
 }
