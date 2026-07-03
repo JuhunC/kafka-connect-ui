@@ -46,13 +46,20 @@ uses ~2 GB), Docker Compose v2+.
 docker compose up --build
 ```
 
+**The demo runs with no authentication by default** — no Keycloak, no login, and every action
+(pause / resume / restart connectors) is allowed. To run *with* auth (Keycloak + RBAC), opt in:
+
+```bash
+CONNECTLENS_AUTH_ENABLED=true docker compose --profile auth up --build
+```
+
 First run pulls large images (Splunk, Kafka Connect) and bakes the Debezium + Splunk plugins into
 the Connect image, so it takes a few minutes. When it settles:
 
 | URL | What |
 |---|---|
-| http://localhost:8080 | **ConnectLens UI** — sign in with `admin` / `admin` |
-| http://localhost:8081 | Keycloak admin (`admin` / `admin`) |
+| http://localhost:8080 | **ConnectLens UI** — no login (everyone is admin) |
+| http://localhost:8081 | Keycloak admin (`admin` / `admin`) — only with `--profile auth` |
 | http://localhost:8000 | Splunk web (`admin` / `Chang3d!`) |
 | http://localhost:8083 | Kafka Connect REST |
 
@@ -119,20 +126,24 @@ state. So the only endpoints it needs are your **Kafka bootstrap** and **Connect
   `CONNECTLENS_OIDC_CLIENT_ID` — these are injected into the SPA at container start via a generated
   `/config.js`, so **no rebuild is needed** (image tag ≥ `0.1.1`).
 
-### Run with authentication disabled (air-gapped / trusted network)
+### Authentication (off by default)
 
-On a trusted internal network you can turn auth off entirely — **no Keycloak, no login**. Use
-[`docker-compose.noauth.yml`](docker-compose.noauth.yml):
+The main demo (`docker compose up`) runs **with no authentication**: Keycloak is gated behind the
+`auth` profile and does not start, the backend runs open (every request is `ADMIN`), and the frontend
+skips OIDC. So every connector action works immediately, no login. This is the recommended way to
+try the demo.
+
+Turn auth **on** (bundled Keycloak + RBAC) with the profile and flag together:
 
 ```bash
-cp .env.app.example .env       # set KAFKA_BOOTSTRAP + CONNECT_URL
-docker compose -f docker-compose.noauth.yml up -d
-# open http://localhost:8080   (no login; everyone is admin)
+CONNECTLENS_AUTH_ENABLED=true docker compose --profile auth up --build
+# open http://localhost:8080  (sign in — see Users and roles below)
 ```
 
-It sets `CONNECTLENS_AUTH_ENABLED=false` on both the backend (the API is open and every request runs as
-`ADMIN`) and the frontend (the SPA skips OIDC). Requires image tag ≥ `0.1.1`. Flip it back on by using
-`docker-compose.app.yml` (bundled Keycloak) or pointing at your own OIDC as above.
+For an **app-only** deployment against your *own* Kafka + Connect (no bundled Kafka/Connect/Splunk),
+use [`docker-compose.noauth.yml`](docker-compose.noauth.yml) (no-auth) or
+[`docker-compose.app.yml`](docker-compose.app.yml) (bundled Keycloak), or point the backend at your
+own OIDC via `OIDC_ISSUER` / `OIDC_JWKS`.
 
 ## CI/CD
 
@@ -150,7 +161,10 @@ It sets `CONNECTLENS_AUTH_ENABLED=false` on both the backend (the API is open an
 
 ## Users and roles
 
-Three demo users (Keycloak realm `connectlens`), mapped to RBAC roles:
+**Only relevant when auth is enabled** (`--profile auth`). With the default no-auth demo there is no
+login and every request is `ADMIN`, so all actions are allowed.
+
+Under `--profile auth`, three demo users (Keycloak realm `connectlens`) map to RBAC roles:
 
 | User | Password | Role | Can do |
 |---|---|---|---|
