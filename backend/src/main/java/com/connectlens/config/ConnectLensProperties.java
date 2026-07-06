@@ -18,6 +18,9 @@ import java.util.List;
 @ConfigurationProperties(prefix = "connectlens")
 public class ConnectLensProperties {
 
+    /** App/image version, shown in the UI. Defaults to the Maven build version (filtered into
+     *  application.yml); override with env CONNECTLENS_VERSION to reflect the exact image tag. */
+    private String version;
     private List<ClusterDef> clusters = new ArrayList<>();
     private Auth auth = new Auth();
     private Poll poll = new Poll();
@@ -25,6 +28,9 @@ public class ConnectLensProperties {
     private Topics topics = new Topics();
     private Oidc oidc = new Oidc();
     private Cors cors = new Cors();
+
+    public String getVersion() { return version; }
+    public void setVersion(String version) { this.version = version; }
 
     public List<ClusterDef> getClusters() { return clusters; }
     public void setClusters(List<ClusterDef> clusters) { this.clusters = clusters; }

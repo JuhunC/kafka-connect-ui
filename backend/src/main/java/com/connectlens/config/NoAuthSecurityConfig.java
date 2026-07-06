@@ -35,7 +35,10 @@ public class NoAuthSecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
-                .anonymous(anon -> anon.principal("local").authorities("ROLE_ADMIN"));
+                // Grant ALL roles to the anonymous principal so every @PreAuthorize role check
+                // (viewer/operator/admin) passes — no connector action can be denied in no-auth mode.
+                .anonymous(anon -> anon.principal("local")
+                        .authorities("ROLE_ADMIN", "ROLE_OPERATOR", "ROLE_VIEWER"));
         return http.build();
     }
 }

@@ -17,6 +17,9 @@ logging:
     org.apache.kafka: WARN
 
 connectlens:
+  # App version shown in the UI (GET /api/version). @project.version@ is replaced with the Maven
+  # build version at package time; override with CONNECTLENS_VERSION to show the exact image tag.
+  version: "@project.version@"
   # Cluster registry. Override / extend via env:
   #   CONNECTLENS_CLUSTERS_0_ID, _NAME, _BOOTSTRAP, _CONNECT
   #   CONNECTLENS_CLUSTERS_1_ID, ...  (multi-cluster: increment the index)

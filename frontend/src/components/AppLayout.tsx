@@ -20,9 +20,12 @@ import {
 import LogoutIcon from "@mui/icons-material/Logout";
 import LensBlurIcon from "@mui/icons-material/LensBlur";
 import IconButton from "@mui/material/IconButton";
+import { useQuery } from "@tanstack/react-query";
 import { useCurrentUser } from "../auth/useCurrentUser";
 import { useAuthActions } from "../auth/useAuthActions";
 import { useClusterContext } from "../pages/ClusterContext";
+import { useApi } from "../api/ApiProvider";
+import type { VersionDto } from "../api/types";
 
 export type AppTab = "topology" | "connectors" | "topics" | "consumer-groups";
 
@@ -46,6 +49,7 @@ export function AppLayout({ tab, onTabChange, children }: AppLayoutProps): React
             <Typography variant="h6" component="div" noWrap>
               ConnectLens
             </Typography>
+            <VersionBadge />
           </Stack>
 
           <FormControl size="small" sx={{ minWidth: 180 }}>
@@ -122,6 +126,30 @@ export function AppLayout({ tab, onTabChange, children }: AppLayoutProps): React
         {children}
       </Box>
     </Box>
+  );
+}
+
+/** Persistent display of the running backend/image version (GET /api/version). */
+function VersionBadge(): ReactElement | null {
+  const api = useApi();
+  const { data } = useQuery<VersionDto>({
+    queryKey: ["version"],
+    queryFn: () => api.getVersion(),
+    staleTime: Infinity,
+    retry: false,
+  });
+  if (!data?.version) return null;
+  const v = `v${data.version.replace(/^v/, "")}`;
+  return (
+    <Tooltip title="Running ConnectLens version">
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ fontFamily: "monospace", alignSelf: "center" }}
+      >
+        {v}
+      </Typography>
+    </Tooltip>
   );
 }
 

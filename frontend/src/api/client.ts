@@ -12,6 +12,7 @@ import type {
   ConsumerGroupDto,
   MeDto,
   TopicDto,
+  VersionDto,
 } from "./types";
 
 /** Typed API error. `status` mirrors the HTTP status; `code` classifies known cases. */
@@ -120,6 +121,10 @@ export class ApiClient {
   }
 
   // ---- Reads ------------------------------------------------------------
+
+  getVersion(): Promise<VersionDto> {
+    return this.request<VersionDto>("/api/version");
+  }
 
   getMe(): Promise<MeDto> {
     return this.request<MeDto>("/api/me");

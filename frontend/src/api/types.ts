@@ -20,6 +20,10 @@ export interface MeDto {
   roles: string[]; // roles like ["VIEWER","OPERATOR"]
 }
 
+export interface VersionDto {
+  version: string; // running app/image version, e.g. "0.6.1"
+}
+
 export interface ClusterSummaryDto {
   id: string;
   name: string;
