@@ -123,7 +123,9 @@ public class ConnectLensProperties {
     }
 
     public static class Cors {
-        private String allowedOrigins = "http://localhost:8080,http://localhost:5173";
+        // "*" reflects any origin (safe here: same-origin proxy + bearer-token auth, no cookies).
+        // Set to a comma-separated origin list to restrict.
+        private String allowedOrigins = "*";
         public String getAllowedOrigins() { return allowedOrigins; }
         public void setAllowedOrigins(String allowedOrigins) { this.allowedOrigins = allowedOrigins; }
     }

@@ -48,5 +48,7 @@ connectlens:
     # jwks = internal URL the backend uses to fetch signing keys
     jwks: http://keycloak:8080/realms/connectlens/protocol/openid-connect/certs
   cors:
-    # Dev origins allowed to call the API directly (prod is same-origin via nginx)
-    allowed-origins: http://localhost:8080,http://localhost:5173
+    # "*" reflects any origin — correct for the same-origin nginx proxy + bearer-token auth (no
+    # cookies), and required so actions work when the app is opened on a real host/IP, not just
+    # localhost. Set a comma-separated origin list to restrict. Env: CONNECTLENS_CORS_ALLOWEDORIGINS
+    allowed-origins: "*"

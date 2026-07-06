@@ -29,9 +29,19 @@ public class SecurityConfig {
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
+        List<String> origins = Arrays.stream(props.getCors().getAllowedOrigins().split(","))
+                .map(String::trim).filter(s -> !s.isEmpty()).toList();
         CorsConfiguration cfg = new CorsConfiguration();
-        cfg.setAllowedOrigins(Arrays.stream(props.getCors().getAllowedOrigins().split(","))
-                .map(String::trim).filter(s -> !s.isEmpty()).toList());
+        // The UI is served same-origin behind nginx and authenticates with bearer tokens (no
+        // cookies), so CORS adds no protection but a hardcoded origin list breaks the app whenever
+        // it's opened on a real host/IP rather than localhost (the browser sends Origin on POST
+        // actions -> a mismatched origin is rejected 403 "Invalid CORS request"). Default to
+        // reflecting ANY origin; set connectlens.cors.allowed-origins to lock it down if desired.
+        if (origins.isEmpty() || origins.contains("*")) {
+            cfg.setAllowedOriginPatterns(List.of("*"));
+        } else {
+            cfg.setAllowedOrigins(origins);
+        }
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "OPTIONS"));
         cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Last-Event-ID"));
         cfg.setAllowCredentials(false);
